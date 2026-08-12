@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+
+# Generated dictionary artifacts. Keep the license and build instructions tracked.
+/package/contents/data/ecdict.sqlite3
+/vendor/ecdict.csv
+
+# Local credentials and runtime state.
+/config.json
+.env
+.env.*
+
+# Editor and package artifacts.
+*.swp
+*.plasmoid

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+    <kcfgfile name=""/>
+
+    <group name="General">
+        <entry name="deepseekApiKey" type="String">
+            <label>DeepSeek API key used for sentence translation.</label>
+            <default></default>
+        </entry>
+        <entry name="deepseekModel" type="String">
+            <label>DeepSeek model used for sentence translation.</label>
+            <default>deepseek-v4-flash</default>
+        </entry>
+        <entry name="deepseekBaseUrl" type="String">
+            <label>DeepSeek OpenAI-compatible API base URL.</label>
+            <default>https://api.deepseek.com</default>
+        </entry>
+        <entry name="openaiApiKey" type="String">
+            <label>OpenAI API key used as an optional fallback for sentence translation.</label>
+            <default></default>
+        </entry>
+        <entry name="openaiModel" type="String">
+            <label>OpenAI model used for sentence translation.</label>
+            <default>gpt-5-nano</default>
+        </entry>
+        <entry name="openaiBaseUrl" type="String">
+            <label>OpenAI API base URL.</label>
+            <default>https://api.openai.com/v1</default>
+        </entry>
+    </group>
+</kcfg>

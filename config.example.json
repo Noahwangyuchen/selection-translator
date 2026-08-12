@@ -1,0 +1,8 @@
+{
+  "deepseek_api_key": "sk-...",
+  "deepseek_model": "deepseek-v4-flash",
+  "deepseek_base_url": "https://api.deepseek.com",
+  "openai_api_key": "sk-...",
+  "openai_model": "gpt-5-nano",
+  "openai_base_url": "https://api.openai.com/v1"
+}

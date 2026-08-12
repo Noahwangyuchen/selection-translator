@@ -1,0 +1,25 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Email": "noah@localhost",
+                "Name": "Noah"
+            }
+        ],
+        "Category": "Utilities",
+        "Description": "Show an offline Chinese translation for the selected English word.",
+        "Description[zh_CN]": "为当前选中的英文单词显示离线中文释义。",
+        "EnabledByDefault": true,
+        "Icon": "accessories-dictionary",
+        "Id": "org.local.selectiontranslator",
+        "License": "MIT",
+        "Name": "Selection Translator",
+        "Name[zh_CN]": "划词翻译",
+        "Version": "0.2.1",
+        "Website": "https://github.com/skywind3000/ECDICT"
+    },
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}
