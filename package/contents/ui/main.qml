@@ -249,9 +249,16 @@ PlasmoidItem {
         clip: true
         readonly property int horizontalPadding: Kirigami.Units.smallSpacing * 2
         readonly property int actionWidth: actionItem.visible ? actionItem.Layout.preferredWidth + compactRow.spacing : 0
+        readonly property int textWidth: Math.ceil(Math.max(compactTextMetrics.advanceWidth, compactTextMetrics.boundingRect.width))
+            + Kirigami.Units.smallSpacing
+        readonly property int textMaximumWidth: root.compactMaxWidth
+            - horizontalPadding
+            - Kirigami.Units.iconSizes.smallMedium
+            - compactRow.spacing
+            - actionWidth
         readonly property int naturalWidth: horizontalPadding
             + Kirigami.Units.iconSizes.smallMedium
-            + (compactLabel.visible ? compactRow.spacing + compactTextMetrics.advanceWidth : 0)
+            + (compactLabel.visible ? compactRow.spacing + textWidth : 0)
             + actionWidth
         readonly property int idleWidth: Kirigami.Units.iconSizes.smallMedium + horizontalPadding
         implicitWidth: root.compactIdle ? idleWidth : Math.min(root.compactMaxWidth, Math.max(Kirigami.Units.gridUnit * 5, naturalWidth))
@@ -300,7 +307,8 @@ PlasmoidItem {
                 maximumLineCount: compact.height >= Kirigami.Units.gridUnit * 2.5 ? 2 : 1
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                Layout.maximumWidth: root.compactMaxWidth - Kirigami.Units.iconSizes.smallMedium - Kirigami.Units.smallSpacing * 3
+                Layout.preferredWidth: Math.min(compact.textWidth, compact.textMaximumWidth)
+                Layout.maximumWidth: compact.textMaximumWidth
                 Layout.alignment: Qt.AlignVCenter
                 verticalAlignment: Text.AlignVCenter
             }
