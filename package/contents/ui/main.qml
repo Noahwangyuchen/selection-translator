@@ -208,13 +208,6 @@ PlasmoidItem {
         onTriggered: root.startListener()
     }
 
-    Timer {
-        interval: 300
-        repeat: true
-        running: serviceWatcher.registered
-        onTriggered: root.requestState()
-    }
-
     DBus.DBusServiceWatcher {
         id: serviceWatcher
         busType: DBus.BusType.Session
@@ -225,6 +218,17 @@ PlasmoidItem {
             } else {
                 root.startListener()
             }
+        }
+    }
+
+    DBus.SignalWatcher {
+        busType: DBus.BusType.Session
+        service: root.dbusService
+        path: root.dbusPath
+        iface: root.dbusInterface
+
+        function dbusStateChanged(state) {
+            root.applyResult(String(state))
         }
     }
 

@@ -21,7 +21,7 @@ kpackagetool6 -t Plasma/Applet -u package
 
 Then add `Selection Translator` / `划词翻译` to a Plasma panel.
 
-On Wayland, one session D-Bus service owns the selection listeners. It uses `wl-paste --watch` for both the primary selection and clipboard. Widgets read the shared service state through lightweight D-Bus calls; they do not start a Python process or read the clipboard on a timer. Some applications or compositors may not expose selected text globally; copying the word will still update the widget.
+On Wayland, one session D-Bus service owns the selection listeners. It uses `wl-paste --watch` for both the primary selection and clipboard, then pushes state changes to every widget through D-Bus signals. Widgets do not poll, start a Python process, or read the clipboard on a timer. Some applications or compositors may not expose selected text globally; copying the word will still update the widget.
 
 The service is started automatically by the first widget instance and remains available for the desktop session. If it exits, any remaining widget instance starts it again.
 
