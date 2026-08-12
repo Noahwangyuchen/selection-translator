@@ -1,20 +1,38 @@
 import QtQuick
+import QtQuick.Window
 import QtTest
 
 TestCase {
     name: "SelectionTranslatorConfig"
     when: windowShown
 
-    Loader {
-        id: configLoader
+    Window {
         width: 640
         height: 480
-        source: "../package/contents/ui/configGeneral.qml"
+        visible: true
+
+        Loader {
+            id: configLoader
+            anchors.fill: parent
+            source: "../package/contents/ui/configGeneral.qml"
+        }
     }
 
     function test_configurationPageLoads() {
         tryCompare(configLoader, "status", Loader.Ready)
         compare(configLoader.item.cfg_serviceOrder, "deepseek,openai,google")
+    }
+
+    function test_advancedSettingsScrollIntoView() {
+        // The standalone test host does not provide Plasma's KCM content sizing.
+        configLoader.item.flickable.contentHeight = configLoader.item.configContent.height
+        const initialPosition = configLoader.item.flickable.contentY
+        configLoader.item.setAdvancedVisible(true)
+        tryVerify(function() {
+            return configLoader.item.flickable.contentY > initialPosition
+        })
+        configLoader.item.setAdvancedVisible(false)
+        configLoader.item.flickable.contentY = 0
     }
 
     function verifyVisibleSectionsDoNotOverlap() {

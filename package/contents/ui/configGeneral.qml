@@ -48,6 +48,21 @@ KCM.SimpleKCM {
         saveServiceOrder()
     }
 
+    function setAdvancedVisible(visible) {
+        advancedVisible = visible
+        if (visible) advancedScrollTimer.restart()
+        else advancedScrollTimer.stop()
+    }
+
+    function scrollToAdvancedSettings() {
+        const position = root.flickable.contentItem.mapFromItem(advancedSettingsCard, 0, 0)
+        root.ensureVisible(
+            advancedSettingsCard,
+            position.x - advancedSettingsCard.x,
+            position.y - advancedSettingsCard.y
+        )
+    }
+
     Component.onCompleted: {
         const known = ["deepseek", "openai", "google"]
         const configured = cfg_serviceOrder.split(",")
@@ -67,6 +82,12 @@ KCM.SimpleKCM {
 
     ListModel {
         id: priorityModel
+    }
+
+    Timer {
+        id: advancedScrollTimer
+        interval: 1
+        onTriggered: root.scrollToAdvancedSettings()
     }
 
     ColumnLayout {
@@ -190,11 +211,12 @@ KCM.SimpleKCM {
                 description: "仅在使用兼容接口或代理时需要修改"
                 icon.name: "configure"
                 trailingLogo.direction: root.advancedVisible ? Qt.UpArrow : Qt.DownArrow
-                onClicked: root.advancedVisible = !root.advancedVisible
+                onClicked: root.setAdvancedVisible(!root.advancedVisible)
             }
         }
 
         FormCard.FormCard {
+            id: advancedSettingsCard
             visible: root.advancedVisible
             Layout.topMargin: Kirigami.Units.smallSpacing
 

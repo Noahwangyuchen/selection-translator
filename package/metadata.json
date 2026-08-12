@@ -16,7 +16,7 @@
         "License": "MIT",
         "Name": "Selection Translator",
         "Name[zh_CN]": "划词翻译",
-        "Version": "0.3.1",
+        "Version": "0.3.2",
         "Website": "https://github.com/skywind3000/ECDICT"
     },
     "X-Plasma-API": "declarativeappletscript",
