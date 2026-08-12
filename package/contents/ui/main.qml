@@ -142,15 +142,6 @@ PlasmoidItem {
         return "'" + String(value).replace(/'/g, "'\\''") + "'"
     }
 
-    function firstValue(data, names) {
-        for (let i = 0; i < names.length; i++) {
-            if (data[names[i]] !== undefined) {
-                return data[names[i]]
-            }
-        }
-        return ""
-    }
-
     function stateSnapshot() {
         return {
             currentWord: currentWord,

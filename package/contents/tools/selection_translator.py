@@ -599,7 +599,9 @@ def run_daemon(db_path):
         def __init__(self):
             self.loop = GLib.MainLoop()
             self.db_path = db_path
+            self.watcher_commands = []
             self.watchers = []
+            self.stopping = False
             self.last_primary_at = 0.0
             bus = dbus.SessionBus()
             bus_name = dbus.service.BusName(
@@ -689,26 +691,41 @@ def run_daemon(db_path):
                 os.path.abspath(__file__),
                 "--selection-event",
             ]
-            commands = [
+            self.watcher_commands = [
                 ["wl-paste", "--primary", "--watch", *base_command, "--source", "primary"],
                 ["wl-paste", "--watch", *base_command, "--source", "clipboard"],
             ]
-            for command in commands:
-                try:
-                    self.watchers.append(subprocess.Popen(
-                        command,
-                        stdin=subprocess.DEVNULL,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    ))
-                except OSError:
-                    continue
+            self.watchers = [self.start_watcher(command) for command in self.watcher_commands]
+            GLib.timeout_add_seconds(2, self.ensure_watchers)
+
+        def start_watcher(self, command):
+            try:
+                return subprocess.Popen(
+                    command,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError:
+                return None
+
+        def ensure_watchers(self):
+            if self.stopping:
+                return False
+            for index, command in enumerate(self.watcher_commands):
+                watcher = self.watchers[index]
+                if watcher is None or watcher.poll() is not None:
+                    self.watchers[index] = self.start_watcher(command)
+            return True
 
         def stop_watchers(self):
+            self.stopping = True
             for watcher in self.watchers:
-                if watcher.poll() is None:
+                if watcher is not None and watcher.poll() is None:
                     watcher.terminate()
             for watcher in self.watchers:
+                if watcher is None:
+                    continue
                 try:
                     watcher.wait(timeout=1)
                 except subprocess.TimeoutExpired:
