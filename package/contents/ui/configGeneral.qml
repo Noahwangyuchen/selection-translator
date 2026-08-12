@@ -18,6 +18,7 @@ KCM.SimpleKCM {
     property alias cfg_openaiApiKey: openaiApiKey.text
     property alias cfg_openaiModel: openaiModel.text
     property alias cfg_openaiBaseUrl: openaiBaseUrl.text
+    readonly property alias configContent: contentColumn
     property bool advancedVisible: false
 
     function serviceName(serviceId) {
@@ -68,143 +69,148 @@ KCM.SimpleKCM {
         id: priorityModel
     }
 
-    FormCard.FormHeader {
-        title: "服务优先级"
-    }
+    ColumnLayout {
+        id: contentColumn
+        spacing: 0
 
-    FormCard.FormCard {
-        Repeater {
-            model: priorityModel
+        FormCard.FormHeader {
+            title: "服务优先级"
+        }
 
-            delegate: QQC2.ItemDelegate {
-                id: serviceDelegate
-                required property int index
-                required property string serviceId
-                width: parent ? parent.width : implicitWidth
+        FormCard.FormCard {
+            Repeater {
+                model: priorityModel
 
-                contentItem: RowLayout {
-                    spacing: Kirigami.Units.smallSpacing
+                delegate: QQC2.ItemDelegate {
+                    id: serviceDelegate
+                    required property int index
+                    required property string serviceId
+                    width: parent ? parent.width : implicitWidth
 
-                    Kirigami.Icon {
-                        source: serviceDelegate.serviceId === "google" ? "web-browser" : "internet-services"
-                        Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                        Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                    }
+                    contentItem: RowLayout {
+                        spacing: Kirigami.Units.smallSpacing
 
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
-
-                        QQC2.Label {
-                            text: root.serviceName(serviceDelegate.serviceId)
-                            Layout.fillWidth: true
+                        Kirigami.Icon {
+                            source: serviceDelegate.serviceId === "google" ? "web-browser" : "internet-services"
+                            Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
+                            Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
                         }
 
-                        QQC2.Label {
-                            text: root.serviceDescription(serviceDelegate.serviceId)
-                            color: Kirigami.Theme.disabledTextColor
-                            font: Kirigami.Theme.smallFont
-                            wrapMode: Text.Wrap
+                        ColumnLayout {
                             Layout.fillWidth: true
+                            spacing: 0
+
+                            QQC2.Label {
+                                text: root.serviceName(serviceDelegate.serviceId)
+                                Layout.fillWidth: true
+                            }
+
+                            QQC2.Label {
+                                text: root.serviceDescription(serviceDelegate.serviceId)
+                                color: Kirigami.Theme.disabledTextColor
+                                font: Kirigami.Theme.smallFont
+                                wrapMode: Text.Wrap
+                                Layout.fillWidth: true
+                            }
                         }
-                    }
 
-                    QQC2.ToolButton {
-                        icon.name: "go-up"
-                        enabled: serviceDelegate.index > 0
-                        display: QQC2.AbstractButton.IconOnly
-                        onClicked: root.moveService(serviceDelegate.index, -1)
-                        QQC2.ToolTip.visible: hovered
-                        QQC2.ToolTip.text: "提高优先级"
-                    }
+                        QQC2.ToolButton {
+                            icon.name: "go-up"
+                            enabled: serviceDelegate.index > 0
+                            display: QQC2.AbstractButton.IconOnly
+                            onClicked: root.moveService(serviceDelegate.index, -1)
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: "提高优先级"
+                        }
 
-                    QQC2.ToolButton {
-                        icon.name: "go-down"
-                        enabled: serviceDelegate.index < priorityModel.count - 1
-                        display: QQC2.AbstractButton.IconOnly
-                        onClicked: root.moveService(serviceDelegate.index, 1)
-                        QQC2.ToolTip.visible: hovered
-                        QQC2.ToolTip.text: "降低优先级"
+                        QQC2.ToolButton {
+                            icon.name: "go-down"
+                            enabled: serviceDelegate.index < priorityModel.count - 1
+                            display: QQC2.AbstractButton.IconOnly
+                            onClicked: root.moveService(serviceDelegate.index, 1)
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: "降低优先级"
+                        }
                     }
                 }
             }
         }
-    }
 
-    FormCard.FormSectionText {
-        text: "整句翻译和单词的在线翻译都会按此顺序尝试，成功后停止。"
-    }
-
-    FormCard.FormHeader {
-        title: "DeepSeek"
-    }
-
-    FormCard.FormCard {
-        FormCard.FormPasswordFieldDelegate {
-            id: deepseekApiKey
-            label: "API Key"
-            placeholderText: "sk-..."
+        FormCard.FormSectionText {
+            text: "整句翻译和单词的在线翻译都会按此顺序尝试，成功后停止。"
         }
 
-        FormCard.FormDelegateSeparator {}
-
-        FormCard.FormTextFieldDelegate {
-            id: deepseekModel
-            label: "模型"
-            placeholderText: "deepseek-v4-flash"
-        }
-    }
-
-    FormCard.FormHeader {
-        title: "OpenAI"
-    }
-
-    FormCard.FormCard {
-        FormCard.FormPasswordFieldDelegate {
-            id: openaiApiKey
-            label: "API Key"
-            placeholderText: "sk-..."
+        FormCard.FormHeader {
+            title: "DeepSeek"
         }
 
-        FormCard.FormDelegateSeparator {}
+        FormCard.FormCard {
+            FormCard.FormPasswordFieldDelegate {
+                id: deepseekApiKey
+                label: "API Key"
+                placeholderText: "sk-..."
+            }
 
-        FormCard.FormTextFieldDelegate {
-            id: openaiModel
-            label: "模型"
-            placeholderText: "gpt-5-nano"
-        }
-    }
+            FormCard.FormDelegateSeparator {}
 
-    FormCard.FormHeader {
-        title: "高级设置"
-    }
-
-    FormCard.FormCard {
-        FormCard.FormButtonDelegate {
-            text: root.advancedVisible ? "隐藏服务地址" : "显示服务地址"
-            description: "仅在使用兼容接口或代理时需要修改"
-            icon.name: "configure"
-            trailingLogo.direction: root.advancedVisible ? Qt.UpArrow : Qt.DownArrow
-            onClicked: root.advancedVisible = !root.advancedVisible
-        }
-    }
-
-    FormCard.FormCard {
-        visible: root.advancedVisible
-        Layout.topMargin: Kirigami.Units.smallSpacing
-
-        FormCard.FormTextFieldDelegate {
-            id: deepseekBaseUrl
-            label: "DeepSeek Base URL"
-            placeholderText: "https://api.deepseek.com"
+            FormCard.FormTextFieldDelegate {
+                id: deepseekModel
+                label: "模型"
+                placeholderText: "deepseek-v4-flash"
+            }
         }
 
-        FormCard.FormDelegateSeparator {}
+        FormCard.FormHeader {
+            title: "OpenAI"
+        }
 
-        FormCard.FormTextFieldDelegate {
-            id: openaiBaseUrl
-            label: "OpenAI Base URL"
-            placeholderText: "https://api.openai.com/v1"
+        FormCard.FormCard {
+            FormCard.FormPasswordFieldDelegate {
+                id: openaiApiKey
+                label: "API Key"
+                placeholderText: "sk-..."
+            }
+
+            FormCard.FormDelegateSeparator {}
+
+            FormCard.FormTextFieldDelegate {
+                id: openaiModel
+                label: "模型"
+                placeholderText: "gpt-5-nano"
+            }
+        }
+
+        FormCard.FormHeader {
+            title: "高级设置"
+        }
+
+        FormCard.FormCard {
+            FormCard.FormButtonDelegate {
+                text: root.advancedVisible ? "隐藏服务地址" : "显示服务地址"
+                description: "仅在使用兼容接口或代理时需要修改"
+                icon.name: "configure"
+                trailingLogo.direction: root.advancedVisible ? Qt.UpArrow : Qt.DownArrow
+                onClicked: root.advancedVisible = !root.advancedVisible
+            }
+        }
+
+        FormCard.FormCard {
+            visible: root.advancedVisible
+            Layout.topMargin: Kirigami.Units.smallSpacing
+
+            FormCard.FormTextFieldDelegate {
+                id: deepseekBaseUrl
+                label: "DeepSeek Base URL"
+                placeholderText: "https://api.deepseek.com"
+            }
+
+            FormCard.FormDelegateSeparator {}
+
+            FormCard.FormTextFieldDelegate {
+                id: openaiBaseUrl
+                label: "OpenAI Base URL"
+                placeholderText: "https://api.openai.com/v1"
+            }
         }
     }
 }
