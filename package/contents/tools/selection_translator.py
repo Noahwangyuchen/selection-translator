@@ -22,6 +22,7 @@ DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_MODEL = "gpt-5-nano"
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
+DEFAULT_SERVICE_ORDER = ("deepseek", "openai", "google")
 DBUS_SERVICE = "org.local.SelectionTranslator"
 DBUS_PATH = "/org/local/SelectionTranslator"
 DBUS_INTERFACE = "org.local.SelectionTranslator"
@@ -135,8 +136,16 @@ def load_config(args=None):
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         payload = {}
     args = args or argparse.Namespace()
+    service_order = (
+        getattr(args, "service_order", "")
+        or os.environ.get("SELECTION_TRANSLATOR_SERVICE_ORDER")
+        or payload.get("service_order")
+        or plasma_payload.get("service_order")
+        or DEFAULT_SERVICE_ORDER
+    )
 
     return {
+        "service_order": normalize_service_order(service_order),
         "deepseek_api_key": clean_config_value(getattr(args, "deepseek_api_key", "") or os.environ.get("DEEPSEEK_API_KEY") or payload.get("deepseek_api_key") or plasma_payload.get("deepseek_api_key") or ""),
         "deepseek_model": clean_config_value(getattr(args, "deepseek_model", "") or os.environ.get("DEEPSEEK_MODEL") or payload.get("deepseek_model") or plasma_payload.get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL),
         "deepseek_base_url": clean_config_value(getattr(args, "deepseek_base_url", "") or os.environ.get("DEEPSEEK_BASE_URL") or payload.get("deepseek_base_url") or plasma_payload.get("deepseek_base_url") or DEFAULT_DEEPSEEK_BASE_URL),
@@ -148,6 +157,25 @@ def load_config(args=None):
 
 def clean_config_value(value):
     return str(value or "").replace("\\n", "").replace("\\r", "").strip()
+
+
+def normalize_service_order(value):
+    if isinstance(value, str):
+        requested = value.split(",")
+    elif isinstance(value, (list, tuple)):
+        requested = value
+    else:
+        requested = []
+
+    order = []
+    for service in requested:
+        service_id = str(service).strip().lower()
+        if service_id in DEFAULT_SERVICE_ORDER and service_id not in order:
+            order.append(service_id)
+    for service_id in DEFAULT_SERVICE_ORDER:
+        if service_id not in order:
+            order.append(service_id)
+    return order
 
 
 def load_plasma_applet_config():
@@ -175,6 +203,7 @@ def load_plasma_applet_config():
         "openaiApiKey": "openai_api_key",
         "openaiModel": "openai_model",
         "openaiBaseUrl": "openai_base_url",
+        "serviceOrder": "service_order",
     }
     result = {}
     in_translator_config = False
@@ -322,26 +351,19 @@ def translate_sentence(text, args=None):
         if cached:
             return cached["translation"], cached["engine"] + " (缓存)"
 
-        try:
-            translated = deepseek_translate(text, config)
-            write_translation_cache(text, translated[0], translated[1])
-            return translated
-        except Exception as error:
-            errors.append("DeepSeek: " + str(error))
-
-        try:
-            translated = openai_translate(text, config)
-            write_translation_cache(text, translated[0], translated[1])
-            return translated
-        except Exception as error:
-            errors.append("OpenAI: " + str(error))
-
-        try:
-            translated = google_translate(text), "Google Translate"
-            write_translation_cache(text, translated[0], translated[1])
-            return translated
-        except Exception as error:
-            errors.append("Google Translate: " + str(error))
+        backends = {
+            "deepseek": ("DeepSeek", lambda: deepseek_translate(text, config)),
+            "openai": ("OpenAI", lambda: openai_translate(text, config)),
+            "google": ("Google Translate", lambda: (google_translate(text), "Google Translate")),
+        }
+        for service_id in config["service_order"]:
+            label, translate = backends[service_id]
+            try:
+                translated = translate()
+                write_translation_cache(text, translated[0], translated[1])
+                return translated
+            except Exception as error:
+                errors.append(label + ": " + str(error))
 
     raise RuntimeError("；".join(errors))
 
@@ -539,6 +561,46 @@ def selection_state(text, db_path):
     return state
 
 
+def begin_word_translation():
+    with shared_state_lock():
+        state = read_shared_state()
+        word = normalize_word(state.get("word", ""))
+        if not state.get("found") or not word:
+            return "", {"translated": False, "message": "请先选择一个英文单词"}
+
+        started_at = state.get("wordOnlineStartedAt", 0)
+        if (
+            state.get("wordOnlineTranslating")
+            and isinstance(started_at, (int, float))
+            and time.time() - started_at < 45
+        ):
+            return "", state
+
+        request_id = uuid.uuid4().hex
+        state["wordOnlineTranslation"] = ""
+        state["wordOnlineEngine"] = ""
+        state["wordOnlineTranslating"] = True
+        state["wordOnlineRequestId"] = request_id
+        state["wordOnlineStartedAt"] = time.time()
+        write_shared_state_unlocked(state)
+        return request_id, state
+
+
+def finish_word_translation(request_id, translation, engine, error=""):
+    with shared_state_lock():
+        state = read_shared_state()
+        if state.get("wordOnlineRequestId") != request_id:
+            return None
+        state["wordOnlineTranslating"] = False
+        state["wordOnlineTranslation"] = translation
+        state["wordOnlineEngine"] = engine
+        state["wordOnlineError"] = error
+        state.pop("wordOnlineRequestId", None)
+        state.pop("wordOnlineStartedAt", None)
+        write_shared_state_unlocked(state)
+        return state
+
+
 def json_state(payload):
     return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
@@ -646,6 +708,18 @@ def run_daemon(db_path):
         def TranslateCurrent(self):
             return self.start_translation(read_shared_state().get("text", ""))
 
+        @dbus.service.method(DBUS_INTERFACE, in_signature="", out_signature="s")
+        def TranslateWordCurrent(self):
+            request_id, state = begin_word_translation()
+            self.publish(state)
+            if request_id:
+                threading.Thread(
+                    target=self.translate_word_worker,
+                    args=(request_id, state["word"]),
+                    daemon=True,
+                ).start()
+            return json_state(state)
+
         def start_translation(self, text):
             source_text = normalize_text(text)
             if not looks_like_sentence(source_text):
@@ -683,6 +757,20 @@ def run_daemon(db_path):
                 }
 
             if finish_translation(request_id, state):
+                GLib.idle_add(self.publish, state)
+
+        def translate_word_worker(self, request_id, word):
+            try:
+                translated, engine = translate_sentence(word)
+                state = finish_word_translation(request_id, translated, engine)
+            except Exception as error:
+                state = finish_word_translation(
+                    request_id,
+                    "",
+                    "",
+                    "在线翻译失败：" + str(error),
+                )
+            if state:
                 GLib.idle_add(self.publish, state)
 
         def start_watchers(self):
@@ -768,6 +856,7 @@ def main(argv):
     parser.add_argument("--openai-api-key", default="")
     parser.add_argument("--openai-model", default="")
     parser.add_argument("--openai-base-url", default="")
+    parser.add_argument("--service-order", default="")
     args = parser.parse_args(argv)
 
     if args.selection_event:

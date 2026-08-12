@@ -1,4 +1,5 @@
 {
+  "service_order": ["deepseek", "openai", "google"],
   "deepseek_api_key": "sk-...",
   "deepseek_model": "deepseek-v4-flash",
   "deepseek_base_url": "https://api.deepseek.com",

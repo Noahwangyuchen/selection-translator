@@ -6,6 +6,10 @@
     <kcfgfile name=""/>
 
     <group name="General">
+        <entry name="serviceOrder" type="String">
+            <label>Online translation service priority.</label>
+            <default>deepseek,openai,google</default>
+        </entry>
         <entry name="deepseekApiKey" type="String">
             <label>DeepSeek API key used for sentence translation.</label>
             <default></default>

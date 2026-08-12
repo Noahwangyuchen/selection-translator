@@ -27,6 +27,9 @@ PlasmoidItem {
     property string translation: ""
     property string definition: ""
     property string exchange: ""
+    property string wordOnlineTranslation: ""
+    property string wordOnlineEngine: ""
+    property string wordOnlineError: ""
     property string statusText: "请选择英文单词"
     property string lastDaemonCommand: ""
     property string sentenceText: ""
@@ -36,6 +39,7 @@ PlasmoidItem {
     property bool hasResult: false
     property bool sentenceCandidate: false
     property bool translatingSentence: false
+    property bool wordOnlineTranslating: false
     readonly property bool compactIdle: !hasResult && !sentenceCandidate && !translatingSentence
         && sentenceTranslation.length === 0 && currentWord.length === 0
     readonly property string compactText: translatingSentence
@@ -66,6 +70,12 @@ PlasmoidItem {
         path: dbusPath,
         iface: dbusInterface,
         member: "TranslateCurrent"
+    })
+    property DBus.dbusMessage translateWordMessage: ({
+        service: dbusService,
+        path: dbusPath,
+        iface: dbusInterface,
+        member: "TranslateWordCurrent"
     })
 
     Component.onCompleted: startListener()
@@ -138,6 +148,27 @@ PlasmoidItem {
         })
     }
 
+    function translateWord() {
+        if (!hasResult || wordOnlineTranslating) return
+        if (!serviceWatcher.registered) {
+            startListener()
+            wordOnlineError = "翻译服务正在启动..."
+            return
+        }
+        wordOnlineTranslation = ""
+        wordOnlineEngine = ""
+        wordOnlineError = ""
+        wordOnlineTranslating = true
+        const reply = DBus.SessionBus.asyncCall(translateWordMessage) as DBus.DBusPendingReply
+        reply.finished.connect(function() {
+            if (reply.isError) {
+                root.wordOnlineTranslating = false
+                root.wordOnlineError = "在线翻译服务暂时不可用"
+            }
+            reply.destroy()
+        })
+    }
+
     function shellQuote(value) {
         return "'" + String(value).replace(/'/g, "'\\''") + "'"
     }
@@ -149,13 +180,17 @@ PlasmoidItem {
             translation: translation,
             definition: definition,
             exchange: exchange,
+            wordOnlineTranslation: wordOnlineTranslation,
+            wordOnlineEngine: wordOnlineEngine,
+            wordOnlineError: wordOnlineError,
             statusText: statusText,
             sentenceText: sentenceText,
             sentenceTranslation: sentenceTranslation,
             sentenceEngine: sentenceEngine,
             hasResult: hasResult,
             sentenceCandidate: sentenceCandidate,
-            translatingSentence: translatingSentence
+            translatingSentence: translatingSentence,
+            wordOnlineTranslating: wordOnlineTranslating
         }
     }
 
@@ -165,6 +200,9 @@ PlasmoidItem {
         translation = state.translation
         definition = state.definition
         exchange = state.exchange
+        wordOnlineTranslation = state.wordOnlineTranslation
+        wordOnlineEngine = state.wordOnlineEngine
+        wordOnlineError = state.wordOnlineError
         statusText = state.statusText
         sentenceText = state.sentenceText
         sentenceTranslation = state.sentenceTranslation
@@ -172,6 +210,7 @@ PlasmoidItem {
         hasResult = state.hasResult
         sentenceCandidate = state.sentenceCandidate
         translatingSentence = state.translatingSentence
+        wordOnlineTranslating = state.wordOnlineTranslating
     }
 
     function applyResult(rawText) {
@@ -401,6 +440,48 @@ PlasmoidItem {
                         text: "词形：" + root.exchange
                         wrapMode: Text.Wrap
                         opacity: 0.62
+                        Layout.fillWidth: true
+                    }
+
+                    PlasmaComponents3.Button {
+                        text: root.wordOnlineTranslating
+                            ? "在线翻译中..."
+                            : (root.wordOnlineTranslation.length > 0 ? "重新在线翻译" : "使用在线服务翻译")
+                        icon.name: root.wordOnlineTranslating ? "view-refresh" : "internet-services"
+                        enabled: !root.wordOnlineTranslating
+                        onClicked: root.translateWord()
+                    }
+
+                    ColumnLayout {
+                        visible: root.wordOnlineTranslation.length > 0
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        PlasmaComponents3.Label {
+                            text: "在线翻译"
+                            font.bold: true
+                            Layout.fillWidth: true
+                        }
+
+                        PlasmaComponents3.Label {
+                            text: root.wordOnlineTranslation
+                            wrapMode: Text.Wrap
+                            Layout.fillWidth: true
+                        }
+
+                        PlasmaComponents3.Label {
+                            visible: root.wordOnlineEngine.length > 0
+                            text: "来源：" + root.wordOnlineEngine
+                            opacity: 0.62
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    PlasmaComponents3.Label {
+                        visible: root.wordOnlineError.length > 0
+                        text: root.wordOnlineError
+                        wrapMode: Text.Wrap
+                        opacity: 0.78
                         Layout.fillWidth: true
                     }
                 }

@@ -7,13 +7,17 @@ function copyState(state) {
         translation: state.translation || "",
         definition: state.definition || "",
         exchange: state.exchange || "",
+        wordOnlineTranslation: state.wordOnlineTranslation || "",
+        wordOnlineEngine: state.wordOnlineEngine || "",
+        wordOnlineError: state.wordOnlineError || "",
         statusText: state.statusText || "",
         sentenceText: state.sentenceText || "",
         sentenceTranslation: state.sentenceTranslation || "",
         sentenceEngine: state.sentenceEngine || "",
         hasResult: Boolean(state.hasResult),
         sentenceCandidate: Boolean(state.sentenceCandidate),
-        translatingSentence: Boolean(state.translatingSentence)
+        translatingSentence: Boolean(state.translatingSentence),
+        wordOnlineTranslating: Boolean(state.wordOnlineTranslating)
     }
 }
 
@@ -31,6 +35,10 @@ function clearWord(state) {
     state.translation = ""
     state.definition = ""
     state.exchange = ""
+    state.wordOnlineTranslation = ""
+    state.wordOnlineEngine = ""
+    state.wordOnlineError = ""
+    state.wordOnlineTranslating = false
     state.hasResult = false
 }
 
@@ -77,6 +85,10 @@ function reduce(current, payload) {
         next.translation = cleanDisplayText(payload.translation)
         next.definition = cleanDisplayText(payload.definition)
         next.exchange = cleanDisplayText(payload.exchange)
+        next.wordOnlineTranslation = cleanDisplayText(payload.wordOnlineTranslation)
+        next.wordOnlineEngine = cleanDisplayText(payload.wordOnlineEngine)
+        next.wordOnlineError = cleanDisplayText(payload.wordOnlineError)
+        next.wordOnlineTranslating = Boolean(payload.wordOnlineTranslating)
         next.statusText = ""
         next.hasResult = true
         return next

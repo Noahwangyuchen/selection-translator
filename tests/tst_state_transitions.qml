@@ -12,13 +12,17 @@ TestCase {
             translation: "",
             definition: "",
             exchange: "",
+            wordOnlineTranslation: "",
+            wordOnlineEngine: "",
+            wordOnlineError: "",
             statusText: "请选择英文单词",
             sentenceText: "",
             sentenceTranslation: "",
             sentenceEngine: "",
             hasResult: false,
             sentenceCandidate: false,
-            translatingSentence: false
+            translatingSentence: false,
+            wordOnlineTranslating: false
         }
     }
 
@@ -121,5 +125,39 @@ TestCase {
         compare(state.translation, "n. 测试\nv. 检验\n[网络] 测验")
         compare(state.definition, "first\nsecond")
         verify(state.translation.indexOf("\\n") === -1)
+    }
+
+    function test_wordOnlineTranslationPreservesDictionaryResult() {
+        let state = apply(initialState(), {
+            found: true,
+            word: "example",
+            translation: "n. 例子",
+            definition: "n. a representative form",
+            wordOnlineTranslating: true
+        })
+        verify(state.hasResult)
+        verify(state.wordOnlineTranslating)
+        compare(state.translation, "n. 例子")
+
+        state = apply(state, {
+            found: true,
+            word: "example",
+            translation: "n. 例子",
+            definition: "n. a representative form",
+            wordOnlineTranslation: "示例",
+            wordOnlineEngine: "DeepSeek test"
+        })
+        compare(state.translation, "n. 例子")
+        compare(state.wordOnlineTranslation, "示例")
+        compare(state.wordOnlineEngine, "DeepSeek test")
+        verify(!state.wordOnlineTranslating)
+
+        state = apply(state, {
+            found: true,
+            word: "different",
+            translation: "adj. 不同的"
+        })
+        compare(state.wordOnlineTranslation, "")
+        compare(state.wordOnlineEngine, "")
     }
 }

@@ -2,7 +2,7 @@
 
 KDE Plasma 6 panel widget for showing an offline Chinese translation of the selected English word.
 
-Single-word lookup is offline through the bundled ECDICT SQLite database. Multi-word selections are treated as sentence candidates: the widget asks for confirmation first, and only sends text to an online sentence backend after pressing `翻译整句`. The current order is DeepSeek, OpenAI, then Google Translate's public web endpoint.
+Single-word lookup is offline through the bundled ECDICT SQLite database. The expanded word view can optionally request an online translation. Multi-word selections are treated as sentence candidates: the widget asks for confirmation first, and only sends text to an online backend after pressing `翻译整句`.
 
 ## Build Dictionary
 
@@ -29,7 +29,7 @@ The service is started automatically by the first widget instance and remains av
 
 Sentence translation requires network access and is intentionally manual so selected text is not uploaded automatically.
 
-DeepSeek is preferred when configured. The easiest path is the widget configuration UI: right-click the widget, open settings, and paste the key on the `翻译服务` page.
+The easiest setup path is the widget configuration UI: right-click the widget and open the `翻译服务` page. The same page lets you arrange DeepSeek, OpenAI, and Google Translate in the order they should be attempted. Both sentence translation and optional online word translation use that order.
 
 Environment variables are also supported:
 
@@ -53,6 +53,6 @@ cp config.example.json ~/.config/selection-translator/config.json
 chmod 600 ~/.config/selection-translator/config.json
 ```
 
-Then edit `~/.config/selection-translator/config.json` and set `deepseek_api_key` or `openai_api_key`. The widget configuration UI takes precedence over this file.
+Then edit `~/.config/selection-translator/config.json` and set `deepseek_api_key` or `openai_api_key`. Command-line options, environment variables, and this file take precedence over the Plasma widget configuration.
 
 Dictionary data: [ECDICT](https://github.com/skywind3000/ECDICT), MIT License.

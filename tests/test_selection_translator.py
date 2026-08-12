@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 SCRIPT_PATH = Path(__file__).parents[1] / "package/contents/tools/selection_translator.py"
@@ -80,6 +81,87 @@ class SharedSentenceStateTests(unittest.TestCase):
             self.assertTrue(accepted)
             self.assertTrue(polled["translated"])
             self.assertEqual(polled["translation"], translated)
+
+    def test_service_order_is_normalized(self):
+        self.assertEqual(
+            translator.normalize_service_order("google,deepseek,google,invalid"),
+            ["google", "deepseek", "openai"],
+        )
+
+    def test_translation_uses_configured_service_order(self):
+        calls = []
+        config = {
+            "service_order": ["google", "openai", "deepseek"],
+            "deepseek_api_key": "",
+            "deepseek_model": "test",
+            "deepseek_base_url": "https://example.invalid",
+            "openai_api_key": "",
+            "openai_model": "test",
+            "openai_base_url": "https://example.invalid",
+        }
+
+        def google(_text):
+            calls.append("google")
+            raise RuntimeError("unavailable")
+
+        def openai(_text, _config):
+            calls.append("openai")
+            return "译文", "OpenAI test"
+
+        with (
+            mock.patch.object(translator, "load_config", return_value=config),
+            mock.patch.object(translator, "google_translate", side_effect=google),
+            mock.patch.object(translator, "openai_translate", side_effect=openai),
+            mock.patch.object(translator, "deepseek_translate") as deepseek,
+        ):
+            translated, engine = translator.translate_sentence("Service order test")
+
+        self.assertEqual(calls, ["google", "openai"])
+        self.assertEqual((translated, engine), ("译文", "OpenAI test"))
+        deepseek.assert_not_called()
+
+    def test_word_online_translation_preserves_dictionary_state(self):
+        translator.write_shared_state({
+            "found": True,
+            "word": "example",
+            "translation": "n. 例子",
+            "definition": "n. a representative form",
+        })
+
+        request_id, started = translator.begin_word_translation()
+        finished = translator.finish_word_translation(
+            request_id,
+            "示例",
+            "DeepSeek test",
+        )
+
+        self.assertTrue(started["found"])
+        self.assertTrue(started["wordOnlineTranslating"])
+        self.assertEqual(finished["translation"], "n. 例子")
+        self.assertEqual(finished["wordOnlineTranslation"], "示例")
+        self.assertFalse(finished["wordOnlineTranslating"])
+
+    def test_new_word_rejects_old_online_translation(self):
+        translator.write_shared_state({
+            "found": True,
+            "word": "first",
+            "translation": "第一",
+        })
+        request_id, _ = translator.begin_word_translation()
+
+        translator.write_shared_state({
+            "found": True,
+            "word": "second",
+            "translation": "第二",
+        })
+        finished = translator.finish_word_translation(
+            request_id,
+            "第一个",
+            "test",
+        )
+
+        self.assertIsNone(finished)
+        self.assertEqual(translator.read_shared_state()["word"], "second")
 
 
 if __name__ == "__main__":
