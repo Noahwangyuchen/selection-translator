@@ -21,6 +21,7 @@ TestCase {
     function test_configurationPageLoads() {
         tryCompare(configLoader, "status", Loader.Ready)
         compare(configLoader.item.cfg_serviceOrder, "deepseek,openai,google")
+        verify(configLoader.item.cfg_clipboardAutoTranslate)
     }
 
     function test_advancedSettingsScrollIntoView() {

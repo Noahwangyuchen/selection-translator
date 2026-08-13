@@ -23,6 +23,7 @@ DEFAULT_OPENAI_MODEL = "gpt-5-nano"
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_SERVICE_ORDER = ("deepseek", "openai", "google")
+EMPTY_SELECTION_DELAY_MS = 300
 DBUS_SERVICE = "org.local.SelectionTranslator"
 DBUS_PATH = "/org/local/SelectionTranslator"
 DBUS_INTERFACE = "org.local.SelectionTranslator"
@@ -57,22 +58,22 @@ def run_text_command(command, timeout=0.35):
     return completed.stdout.strip()
 
 
-def read_selection():
+def read_selection(include_clipboard=True):
     session_type = os.environ.get("XDG_SESSION_TYPE", "").lower()
     candidates = []
 
     if session_type == "wayland":
-        candidates.extend([
-            ["wl-paste", "--primary", "--no-newline"],
-            ["wl-paste", "--no-newline"],
-        ])
+        candidates.append(["wl-paste", "--primary", "--no-newline"])
+        if include_clipboard:
+            candidates.append(["wl-paste", "--no-newline"])
     else:
         candidates.extend([
             ["xclip", "-selection", "primary", "-o"],
             ["xsel", "-p", "-o"],
             ["wl-paste", "--primary", "--no-newline"],
-            ["wl-paste", "--no-newline"],
         ])
+        if include_clipboard:
+            candidates.append(["wl-paste", "--no-newline"])
 
     for command in candidates:
         text = run_text_command(command)
@@ -143,8 +144,16 @@ def load_config(args=None):
         or plasma_payload.get("service_order")
         or DEFAULT_SERVICE_ORDER
     )
+    clipboard_auto_translate = first_config_value(
+        getattr(args, "clipboard_auto_translate", None),
+        os.environ.get("SELECTION_TRANSLATOR_CLIPBOARD") if "SELECTION_TRANSLATOR_CLIPBOARD" in os.environ else None,
+        payload.get("clipboard_auto_translate"),
+        plasma_payload.get("clipboard_auto_translate"),
+        True,
+    )
 
     return {
+        "clipboard_auto_translate": parse_bool(clipboard_auto_translate),
         "service_order": normalize_service_order(service_order),
         "deepseek_api_key": clean_config_value(getattr(args, "deepseek_api_key", "") or os.environ.get("DEEPSEEK_API_KEY") or payload.get("deepseek_api_key") or plasma_payload.get("deepseek_api_key") or ""),
         "deepseek_model": clean_config_value(getattr(args, "deepseek_model", "") or os.environ.get("DEEPSEEK_MODEL") or payload.get("deepseek_model") or plasma_payload.get("deepseek_model") or DEFAULT_DEEPSEEK_MODEL),
@@ -157,6 +166,16 @@ def load_config(args=None):
 
 def clean_config_value(value):
     return str(value or "").replace("\\n", "").replace("\\r", "").strip()
+
+
+def first_config_value(*values):
+    return next((value for value in values if value is not None and value != ""), None)
+
+
+def parse_bool(value):
+    if isinstance(value, bool):
+        return value
+    return str(value).strip().lower() not in {"0", "false", "no", "off"}
 
 
 def normalize_service_order(value):
@@ -197,6 +216,7 @@ def load_plasma_applet_config():
         return {}
 
     key_map = {
+        "clipboardAutoTranslate": "clipboard_auto_translate",
         "deepseekApiKey": "deepseek_api_key",
         "deepseekModel": "deepseek_model",
         "deepseekBaseUrl": "deepseek_base_url",
@@ -218,6 +238,32 @@ def load_plasma_applet_config():
         if mapped and clean_config_value(value) and not result.get(mapped):
             result[mapped] = value
     return result
+
+
+class SelectionEventDebouncer:
+    def __init__(self, process, schedule, cancel):
+        self.process = process
+        self.schedule = schedule
+        self.cancel = cancel
+        self.pending_clear = None
+
+    def handle(self, text):
+        if normalize_text(text):
+            self.cancel_clear()
+            self.process(text)
+            return
+        self.cancel_clear()
+        self.pending_clear = self.schedule(EMPTY_SELECTION_DELAY_MS, self.flush_clear)
+
+    def cancel_clear(self):
+        if self.pending_clear is not None:
+            self.cancel(self.pending_clear)
+            self.pending_clear = None
+
+    def flush_clear(self):
+        self.pending_clear = None
+        self.process("")
+        return False
 
 
 def extract_openai_text(payload):
@@ -665,6 +711,11 @@ def run_daemon(db_path):
             self.watchers = []
             self.stopping = False
             self.last_primary_at = 0.0
+            self.selection_events = SelectionEventDebouncer(
+                self.process_selection,
+                GLib.timeout_add,
+                GLib.source_remove,
+            )
             bus = dbus.SessionBus()
             bus_name = dbus.service.BusName(
                 DBUS_SERVICE,
@@ -690,9 +741,12 @@ def run_daemon(db_path):
             now = time.monotonic()
             if source == "primary":
                 self.last_primary_at = now
-            elif now - self.last_primary_at < 0.4:
+            elif not load_config()["clipboard_auto_translate"] or now - self.last_primary_at < 0.4:
                 return
-            self.publish(selection_state(str(text), self.db_path))
+            self.selection_events.handle(str(text))
+
+        def process_selection(self, text):
+            self.publish(selection_state(text, self.db_path))
 
         @dbus.service.method(DBUS_INTERFACE, in_signature="", out_signature="s")
         def Refresh(self):
@@ -823,12 +877,13 @@ def run_daemon(db_path):
         def run(self):
             signal.signal(signal.SIGTERM, lambda *_: self.loop.quit())
             self.start_watchers()
-            current = read_selection()
+            current = read_selection(load_config()["clipboard_auto_translate"])
             if current:
                 self.publish(selection_state(current, self.db_path))
             try:
                 self.loop.run()
             finally:
+                self.selection_events.cancel_clear()
                 self.stop_watchers()
 
     try:

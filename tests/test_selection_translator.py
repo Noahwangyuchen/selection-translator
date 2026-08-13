@@ -88,6 +88,63 @@ class SharedSentenceStateTests(unittest.TestCase):
             ["google", "deepseek", "openai"],
         )
 
+    def test_boolean_config_accepts_plasma_values(self):
+        self.assertFalse(translator.parse_bool("false"))
+        self.assertFalse(translator.parse_bool("0"))
+        self.assertTrue(translator.parse_bool("true"))
+
+    def test_clipboard_setting_is_loaded_from_plasma(self):
+        with (
+            mock.patch.object(
+                translator,
+                "load_plasma_applet_config",
+                return_value={"clipboard_auto_translate": "false"},
+            ),
+            mock.patch("builtins.open", side_effect=FileNotFoundError),
+        ):
+            config = translator.load_config()
+
+        self.assertFalse(config["clipboard_auto_translate"])
+
+    def test_empty_selection_is_debounced(self):
+        processed = []
+        scheduled = {}
+        cancelled = []
+
+        def schedule(_delay, callback):
+            scheduled[1] = callback
+            return 1
+
+        debouncer = translator.SelectionEventDebouncer(
+            processed.append,
+            schedule,
+            cancelled.append,
+        )
+        debouncer.handle("")
+        self.assertEqual(processed, [])
+
+        debouncer.handle("hello")
+        self.assertEqual(cancelled, [1])
+        self.assertEqual(processed, ["hello"])
+
+    def test_empty_selection_clears_after_delay(self):
+        processed = []
+        scheduled = {}
+
+        def schedule(_delay, callback):
+            scheduled[1] = callback
+            return 1
+
+        debouncer = translator.SelectionEventDebouncer(
+            processed.append,
+            schedule,
+            lambda _source_id: None,
+        )
+        debouncer.handle("")
+        scheduled[1]()
+
+        self.assertEqual(processed, [""])
+
     def test_translation_uses_configured_service_order(self):
         calls = []
         config = {

@@ -23,6 +23,8 @@ Then add `Selection Translator` / `划词翻译` to a Plasma panel.
 
 On Wayland, one session D-Bus service owns the selection listeners. It uses `wl-paste --watch` for both the primary selection and clipboard, then pushes state changes to every widget through D-Bus signals. Widgets do not poll, start a Python process, or read the clipboard on a timer. Some applications or compositors may not expose selected text globally; copying the word will still update the widget.
 
+Clipboard-triggered translation can be disabled from the widget configuration. Primary selections continue to update automatically, while the manual refresh action can still read the current clipboard when needed.
+
 The service is started automatically by the first widget instance and remains available for the desktop session. If it exits, any remaining widget instance starts it again. If either `wl-paste` listener exits unexpectedly, the service restarts that listener automatically.
 
 ## Sentence Translation

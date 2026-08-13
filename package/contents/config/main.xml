@@ -6,6 +6,10 @@
     <kcfgfile name=""/>
 
     <group name="General">
+        <entry name="clipboardAutoTranslate" type="Bool">
+            <label>Automatically translate text copied to the clipboard.</label>
+            <default>true</default>
+        </entry>
         <entry name="serviceOrder" type="String">
             <label>Online translation service priority.</label>
             <default>deepseek,openai,google</default>

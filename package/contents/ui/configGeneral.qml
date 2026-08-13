@@ -11,6 +11,7 @@ import org.kde.kirigamiaddons.formcard as FormCard
 KCM.SimpleKCM {
     id: root
 
+    property alias cfg_clipboardAutoTranslate: clipboardAutoTranslate.checked
     property string cfg_serviceOrder: "deepseek,openai,google"
     property alias cfg_deepseekApiKey: deepseekApiKey.text
     property alias cfg_deepseekModel: deepseekModel.text
@@ -93,6 +94,20 @@ KCM.SimpleKCM {
     ColumnLayout {
         id: contentColumn
         spacing: 0
+
+        FormCard.FormHeader {
+            title: "自动监听"
+        }
+
+        FormCard.FormCard {
+            FormCard.FormSwitchDelegate {
+                id: clipboardAutoTranslate
+                text: "自动翻译剪贴板内容"
+                description: "关闭后仅响应鼠标选中的文本；此设置对所有组件实例生效"
+                icon.name: "edit-paste"
+                checked: true
+            }
+        }
 
         FormCard.FormHeader {
             title: "服务优先级"

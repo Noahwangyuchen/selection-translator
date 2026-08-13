@@ -1,4 +1,5 @@
 {
+  "clipboard_auto_translate": true,
   "service_order": ["deepseek", "openai", "google"],
   "deepseek_api_key": "sk-...",
   "deepseek_model": "deepseek-v4-flash",
