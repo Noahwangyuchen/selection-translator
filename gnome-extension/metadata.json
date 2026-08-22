@@ -1,0 +1,8 @@
+{
+  "uuid": "selection-translator@noahwangyuchen.local",
+  "name": "Selection Translator",
+  "description": "GNOME panel frontend for Selection Translator",
+  "shell-version": ["46"],
+  "version": 1,
+  "url": "https://github.com/Noahwangyuchen/plasma-selection-translator"
+}
