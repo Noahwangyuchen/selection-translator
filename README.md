@@ -31,6 +31,33 @@ kpackagetool6 -t Plasma/Applet -i selection-translator-0.3.3.plasmoid
 
 For an existing installation, replace `-i` with `-u`. Then add `Selection Translator` / `划词翻译` to a Plasma panel.
 
+## GNOME 46
+
+The repository also contains a GNOME Shell 46 panel frontend. It uses the same
+Python D-Bus service, offline ECDICT database, privacy rules, and online
+translation configuration as the Plasma widget. On X11, the service polls the
+PRIMARY selection with `xclip`; on Wayland it keeps the upstream `wl-paste`
+listeners. GNOME Wayland may not expose another application's primary selection;
+copying the text remains the fallback in that case.
+
+In addition to the common Python D-Bus/PyGObject requirements, install `xclip`
+for GNOME X11 or `wl-clipboard` for GNOME Wayland.
+
+After generating or extracting `package/contents/data/ecdict.sqlite3`, install
+the GNOME frontend with:
+
+```sh
+scripts/install_gnome.sh
+gnome-extensions enable selection-translator@noahwangyuchen.local
+```
+
+The installer creates a user service and installs the extension under
+`~/.local/share/gnome-shell/extensions`. A GNOME Shell restart or a log out/in
+may be required the first time the extension is installed. Set `PYTHON_BIN` if
+the required `dbus` and `gi` modules are installed in a non-default Python.
+Online translation settings are stored in
+`~/.config/selection-translator/config.json`.
+
 ## Build From Source
 
 The widget queries `package/contents/data/ecdict.sqlite3`. Build it from ECDICT:

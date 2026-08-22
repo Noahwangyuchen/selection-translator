@@ -145,6 +145,26 @@ class SharedSentenceStateTests(unittest.TestCase):
 
         self.assertEqual(processed, [""])
 
+    def test_x11_primary_source_uses_xclip(self):
+        with (
+            mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11"}),
+            mock.patch.object(translator, "run_text_command", return_value="hello") as run,
+        ):
+            text = translator.read_selection_source("primary")
+
+        self.assertEqual(text, "hello")
+        run.assert_called_once_with(["xclip", "-selection", "primary", "-o"])
+
+    def test_x11_clipboard_source_uses_xclip(self):
+        with (
+            mock.patch.dict(os.environ, {"XDG_SESSION_TYPE": "x11"}),
+            mock.patch.object(translator, "run_text_command", return_value="copied") as run,
+        ):
+            text = translator.read_selection_source("clipboard")
+
+        self.assertEqual(text, "copied")
+        run.assert_called_once_with(["xclip", "-selection", "clipboard", "-o"])
+
     def test_translation_uses_configured_service_order(self):
         calls = []
         config = {

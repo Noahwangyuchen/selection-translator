@@ -82,6 +82,20 @@ def read_selection(include_clipboard=True):
     return ""
 
 
+def read_selection_source(source):
+    session_type = os.environ.get("XDG_SESSION_TYPE", "").lower()
+    if session_type == "wayland":
+        command = ["wl-paste", "--primary", "--no-newline"] if source == "primary" else ["wl-paste", "--no-newline"]
+        return run_text_command(command)
+    if source == "primary":
+        for command in (["xclip", "-selection", "primary", "-o"], ["xsel", "-p", "-o"]):
+            text = run_text_command(command)
+            if text:
+                return text
+        return ""
+    return run_text_command(["xclip", "-selection", "clipboard", "-o"])
+
+
 def normalize_word(text):
     if not text:
         return ""
@@ -709,6 +723,8 @@ def run_daemon(db_path):
             self.db_path = db_path
             self.watcher_commands = []
             self.watchers = []
+            self.poll_source = None
+            self.last_seen = {"primary": None, "clipboard": None}
             self.stopping = False
             self.last_primary_at = 0.0
             self.selection_events = SelectionEventDebouncer(
@@ -828,6 +844,13 @@ def run_daemon(db_path):
                 GLib.idle_add(self.publish, state)
 
         def start_watchers(self):
+            if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
+                self.last_seen = {
+                    "primary": read_selection_source("primary"),
+                    "clipboard": read_selection_source("clipboard"),
+                }
+                self.poll_source = GLib.timeout_add(250, self.poll_x11_selections)
+                return
             base_command = [
                 sys.executable,
                 os.path.abspath(__file__),
@@ -839,6 +862,17 @@ def run_daemon(db_path):
             ]
             self.watchers = [self.start_watcher(command) for command in self.watcher_commands]
             GLib.timeout_add_seconds(2, self.ensure_watchers)
+
+        def poll_x11_selections(self):
+            if self.stopping:
+                return False
+            for source in ("primary", "clipboard"):
+                text = read_selection_source(source)
+                if text == self.last_seen[source]:
+                    continue
+                self.last_seen[source] = text
+                self.ProcessSelection(text, source)
+            return True
 
         def start_watcher(self, command):
             try:
@@ -862,6 +896,9 @@ def run_daemon(db_path):
 
         def stop_watchers(self):
             self.stopping = True
+            if self.poll_source is not None:
+                GLib.source_remove(self.poll_source)
+                self.poll_source = None
             for watcher in self.watchers:
                 if watcher is not None and watcher.poll() is None:
                     watcher.terminate()
@@ -905,6 +942,7 @@ def main(argv):
     parser.add_argument("--limit", default="1")
     parser.add_argument("--stamp", default="")
     parser.add_argument("--translate", action="store_true")
+    parser.add_argument("--translate-word-current", action="store_true")
     parser.add_argument("--deepseek-api-key", default="")
     parser.add_argument("--deepseek-model", default="")
     parser.add_argument("--deepseek-base-url", default="")
@@ -933,6 +971,19 @@ def main(argv):
         return 0
     if not args.db:
         parser.error("--db is required")
+
+    if args.translate_word_current:
+        request_id, state = begin_word_translation()
+        if not request_id:
+            emit(state)
+            return 0
+        try:
+            translation, engine = translate_sentence(state["word"], args)
+            result = finish_word_translation(request_id, translation, engine)
+        except Exception as error:
+            result = finish_word_translation(request_id, "", "", "在线翻译失败：" + str(error))
+        emit(result or read_shared_state())
+        return 0
 
     source_text = normalize_text(read_selection() if args.selection else args.text)
     if args.translate:
