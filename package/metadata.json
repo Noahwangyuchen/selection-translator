@@ -3,11 +3,12 @@
     "KPlugin": {
         "Authors": [
             {
-                "Email": "noah@localhost",
-                "Name": "Noah"
+                "Email": "91252340+Noahwangyuchen@users.noreply.github.com",
+                "Name": "Yuchen Wang"
             }
         ],
-        "Category": "Utilities",
+        "BugReportUrl": "https://github.com/Noahwangyuchen/plasma-selection-translator/issues",
+        "Category": "Language",
         "Description": "Show an offline Chinese translation for the selected English word.",
         "Description[zh_CN]": "为当前选中的英文单词显示离线中文释义。",
         "EnabledByDefault": true,
@@ -17,7 +18,7 @@
         "Name": "Selection Translator",
         "Name[zh_CN]": "划词翻译",
         "Version": "0.3.3",
-        "Website": "https://github.com/skywind3000/ECDICT"
+        "Website": "https://github.com/Noahwangyuchen/plasma-selection-translator"
     },
     "X-Plasma-API": "declarativeappletscript",
     "X-Plasma-API-Minimum-Version": "6.0",

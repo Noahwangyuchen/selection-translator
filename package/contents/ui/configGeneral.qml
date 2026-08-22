@@ -19,6 +19,14 @@ KCM.SimpleKCM {
     property alias cfg_openaiApiKey: openaiApiKey.text
     property alias cfg_openaiModel: openaiModel.text
     property alias cfg_openaiBaseUrl: openaiBaseUrl.text
+    property bool cfg_clipboardAutoTranslateDefault: true
+    property string cfg_serviceOrderDefault: "deepseek,openai,google"
+    property string cfg_deepseekApiKeyDefault: ""
+    property string cfg_deepseekModelDefault: "deepseek-v4-flash"
+    property string cfg_deepseekBaseUrlDefault: "https://api.deepseek.com"
+    property string cfg_openaiApiKeyDefault: ""
+    property string cfg_openaiModelDefault: "gpt-5-nano"
+    property string cfg_openaiBaseUrlDefault: "https://api.openai.com/v1"
     readonly property alias configContent: contentColumn
     property bool advancedVisible: false
 

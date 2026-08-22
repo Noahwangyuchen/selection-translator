@@ -1,10 +1,37 @@
-# Selection Translator
+# Selection Translator / 划词翻译
 
-KDE Plasma 6 panel widget for showing an offline Chinese translation of the selected English word.
+KDE Plasma 6 panel widget that displays Chinese translations for selected English text.
 
-Single-word lookup is offline through the bundled ECDICT SQLite database. The expanded word view can optionally request an online translation. Multi-word selections are treated as sentence candidates: the widget asks for confirmation first, and only sends text to an online backend after pressing `翻译整句`.
+Single-word lookup is offline through the bundled ECDICT SQLite database. The expanded word view can optionally request an online translation. Multi-word selections are treated as sentence candidates: the widget asks for confirmation first and only sends text to an online backend after pressing `翻译整句`.
 
-## Build Dictionary
+## Features
+
+- Automatic translation of the current primary selection on Wayland and X11.
+- Offline dictionary lookup for single English words.
+- Optional DeepSeek, OpenAI, and Google Translate backends for sentences and words.
+- Configurable online service priority and optional clipboard monitoring.
+- One shared D-Bus listener and synchronized results across multiple widget instances.
+
+## Requirements
+
+- KDE Plasma 6
+- Python 3 with D-Bus and PyGObject bindings
+- Wayland: `wl-clipboard`
+- X11: `xclip` or `xsel`
+
+Common package names are `python-dbus`, `python-gobject`, and `wl-clipboard` on Arch Linux; or `python3-dbus`, `python3-gi`, and `wl-clipboard` on Debian-derived distributions.
+
+## Install A Release
+
+Download the `.plasmoid` file from the latest [GitHub Release](https://github.com/Noahwangyuchen/plasma-selection-translator/releases/latest), then run:
+
+```sh
+kpackagetool6 -t Plasma/Applet -i selection-translator-0.3.3.plasmoid
+```
+
+For an existing installation, replace `-i` with `-u`. Then add `Selection Translator` / `划词翻译` to a Plasma panel.
+
+## Build From Source
 
 The widget queries `package/contents/data/ecdict.sqlite3`. Build it from ECDICT:
 
@@ -13,13 +40,11 @@ curl -L -o vendor/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDIC
 python3 scripts/build_ecdict_sqlite.py vendor/ecdict.csv package/contents/data/ecdict.sqlite3
 ```
 
-## Install
-
 ```sh
 kpackagetool6 -t Plasma/Applet -u package
 ```
 
-Then add `Selection Translator` / `划词翻译` to a Plasma panel.
+## How It Works
 
 On Wayland, one session D-Bus service owns the selection listeners. It uses `wl-paste --watch` for both the primary selection and clipboard, then pushes state changes to every widget through D-Bus signals. Widgets do not poll, start a Python process, or read the clipboard on a timer. Some applications or compositors may not expose selected text globally; copying the word will still update the widget.
 
@@ -57,4 +82,10 @@ chmod 600 ~/.config/selection-translator/config.json
 
 Then edit `~/.config/selection-translator/config.json` and set `deepseek_api_key` or `openai_api_key`. Command-line options, environment variables, and this file take precedence over the Plasma widget configuration.
 
-Dictionary data: [ECDICT](https://github.com/skywind3000/ECDICT), MIT License.
+## Privacy
+
+Single-word dictionary lookups are local. Text is sent to an online service only after you explicitly confirm a sentence translation or request online translation for a word. Online translations are cached locally, including the source text. API keys saved through the widget settings are stored in the Plasma user configuration and are not encrypted. See [PRIVACY.md](PRIVACY.md) for details.
+
+## License
+
+The widget is released under the [MIT License](LICENSE). Dictionary data comes from [ECDICT](https://github.com/skywind3000/ECDICT) under the MIT License; its license is included in the package.

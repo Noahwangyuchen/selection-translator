@@ -369,7 +369,7 @@ PlasmoidItem {
                         root.translateSentence()
                     }
 
-                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.visible: translateButton.containsMouse
                     QQC2.ToolTip.text: root.translatingSentence ? "翻译中" : "翻译整句"
                 }
             }

@@ -22,6 +22,9 @@ TestCase {
         tryCompare(configLoader, "status", Loader.Ready)
         compare(configLoader.item.cfg_serviceOrder, "deepseek,openai,google")
         verify(configLoader.item.cfg_clipboardAutoTranslate)
+        verify(configLoader.item.cfg_clipboardAutoTranslateDefault)
+        compare(configLoader.item.cfg_deepseekModelDefault, "deepseek-v4-flash")
+        compare(configLoader.item.cfg_openaiModelDefault, "gpt-5-nano")
     }
 
     function test_advancedSettingsScrollIntoView() {
