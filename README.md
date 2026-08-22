@@ -1,118 +1,135 @@
 # Selection Translator / 划词翻译
 
-KDE Plasma 6 panel widget that displays Chinese translations for selected English text.
+Selection Translator displays Chinese translations for English text selected on the desktop. It provides separate panel frontends for KDE Plasma 6 and GNOME Shell 46, backed by the same Python translation service.
 
-Single-word lookup is offline through the bundled ECDICT SQLite database. The expanded word view can optionally request an online translation. Multi-word selections are treated as sentence candidates: the widget asks for confirmation first and only sends text to an online backend after pressing `翻译整句`.
+Single words are looked up locally in the bundled ECDICT database. Sentence translation and optional online word translation support DeepSeek, OpenAI, and Google Translate, and are only triggered after explicit user action.
 
 ## Features
 
-- Automatic translation of the current primary selection on Wayland and X11.
-- Offline dictionary lookup for single English words.
-- Optional DeepSeek, OpenAI, and Google Translate backends for sentences and words.
-- Configurable online service priority and optional clipboard monitoring.
-- One shared D-Bus listener and synchronized results across multiple widget instances.
+- Offline Chinese dictionary lookup for selected English words.
+- Optional online translation for sentences and individual words.
+- Configurable DeepSeek, OpenAI, and Google Translate priority.
+- Optional clipboard monitoring.
+- One backend and synchronized state across frontend instances.
+- Compact panel result with a detailed popup view.
+
+## Desktop Support
+
+| Desktop | Session | Status | Selection backend |
+| --- | --- | --- | --- |
+| KDE Plasma 6 | Wayland | Supported | `wl-paste --watch` |
+| KDE Plasma 6 | X11 | Supported on current `main` | `xclip` polling; `xsel` fallback for PRIMARY |
+| GNOME Shell 46 | X11 | Tested on Ubuntu 24.04.3 | `xclip` polling |
+| GNOME Shell 46 | Wayland | Best effort | `wl-paste`; compositor restrictions apply |
+
+GNOME Wayland may prevent background access to another application's primary selection. Copying the text may work as a fallback, but global selection monitoring is not guaranteed.
 
 ## Requirements
 
-- KDE Plasma 6
-- Python 3 with D-Bus and PyGObject bindings
+Common requirements:
+
+- Python 3
+- Python D-Bus bindings
+- PyGObject
+- The ECDICT SQLite database
+
+Session-specific requirements:
+
 - Wayland: `wl-clipboard`
-- X11: `xclip` or `xsel`
+- X11: `xclip` (`xsel` can only act as a PRIMARY-selection fallback)
 
-Common package names are `python-dbus`, `python-gobject`, and `wl-clipboard` on Arch Linux; or `python3-dbus`, `python3-gi`, and `wl-clipboard` on Debian-derived distributions.
+On Arch Linux, the common package names are `python-dbus`, `python-gobject`, and `wl-clipboard`. On Debian and Ubuntu they are usually `python3-dbus`, `python3-gi`, and `wl-clipboard`.
 
-## Install A Release
+## KDE Plasma Installation
 
-Download the `.plasmoid` file from the latest [GitHub Release](https://github.com/Noahwangyuchen/plasma-selection-translator/releases/latest), then run:
+The `.plasmoid` release contains the Plasma frontend and the complete offline dictionary. Download it from the latest [GitHub Release](https://github.com/Noahwangyuchen/plasma-selection-translator/releases/latest), then run:
 
 ```sh
 kpackagetool6 -t Plasma/Applet -i selection-translator-0.3.3.plasmoid
 ```
 
-For an existing installation, replace `-i` with `-u`. Then add `Selection Translator` / `划词翻译` to a Plasma panel.
+Use `-u` instead of `-i` to update an existing installation. Then add `Selection Translator` / `划词翻译` to a Plasma panel.
 
-## GNOME 46
+The GNOME frontend and X11 polling support were merged after `v0.3.3` and are currently available from `main`, not from the `v0.3.3` `.plasmoid` asset.
 
-The repository also contains a GNOME Shell 46 panel frontend. It uses the same
-Python D-Bus service, offline ECDICT database, privacy rules, and online
-translation configuration as the Plasma widget. On X11, the service polls the
-PRIMARY selection with `xclip`; on Wayland it keeps the upstream `wl-paste`
-listeners. GNOME Wayland may not expose another application's primary selection;
-copying the text remains the fallback in that case.
+## GNOME Shell Installation
 
-In addition to the common Python D-Bus/PyGObject requirements, install `xclip`
-for GNOME X11 or `wl-clipboard` for GNOME Wayland.
+The GNOME frontend is currently installed from the source repository; it is not included in the `.plasmoid` file. GNOME Shell 46 is the supported extension version.
 
-After generating or extracting `package/contents/data/ecdict.sqlite3`, install
-the GNOME frontend with:
+First clone the repository and build the dictionary:
+
+```sh
+git clone https://github.com/Noahwangyuchen/plasma-selection-translator.git
+cd plasma-selection-translator
+curl -L -o vendor/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
+python3 scripts/build_ecdict_sqlite.py vendor/ecdict.csv package/contents/data/ecdict.sqlite3
+```
+
+Install and enable the extension:
 
 ```sh
 scripts/install_gnome.sh
 gnome-extensions enable selection-translator@noahwangyuchen.local
 ```
 
-The installer creates a user service and installs the extension under
-`~/.local/share/gnome-shell/extensions`. A GNOME Shell restart or a log out/in
-may be required the first time the extension is installed. Set `PYTHON_BIN` if
-the required `dbus` and `gi` modules are installed in a non-default Python.
-Online translation settings are stored in
-`~/.config/selection-translator/config.json`.
+The installer:
 
-## Build From Source
+- installs the extension under `~/.local/share/gnome-shell/extensions/`;
+- installs the backend and dictionary under `~/.local/share/selection-translator/`;
+- creates and starts `~/.config/systemd/user/selection-translator.service`;
+- creates `~/.config/selection-translator/config.json` only if it does not already exist.
 
-The widget queries `package/contents/data/ecdict.sqlite3`. Build it from ECDICT:
+A GNOME Shell restart or log out/in may be required after the first installation. Set `PYTHON_BIN` before running the installer if `dbus` and `gi` are provided by a non-default Python interpreter.
 
-```sh
-curl -L -o vendor/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
-python3 scripts/build_ecdict_sqlite.py vendor/ecdict.csv package/contents/data/ecdict.sqlite3
-```
+## Build Plasma From Source
+
+After building the dictionary as shown above, install or update the Plasma package with:
 
 ```sh
 kpackagetool6 -t Plasma/Applet -u package
 ```
 
-## How It Works
+## Configuration
 
-On Wayland, one session D-Bus service owns the selection listeners. It uses `wl-paste --watch` for both the primary selection and clipboard, then pushes state changes to every widget through D-Bus signals. Widgets do not poll, start a Python process, or read the clipboard on a timer. Some applications or compositors may not expose selected text globally; copying the word will still update the widget.
+On Plasma, right-click the widget and open `翻译服务`. The configuration page controls clipboard monitoring, API credentials, models, service URLs, and translation service priority.
 
-Clipboard-triggered translation can be disabled from the widget configuration. Primary selections continue to update automatically, while the manual refresh action can still read the current clipboard when needed.
+On GNOME, edit:
 
-The service is started automatically by the first widget instance and remains available for the desktop session. If it exits, any remaining widget instance starts it again. If either `wl-paste` listener exits unexpectedly, the service restarts that listener automatically.
+```text
+~/.config/selection-translator/config.json
+```
 
-## Sentence Translation
-
-Sentence translation requires network access and is intentionally manual so selected text is not uploaded automatically.
-
-The easiest setup path is the widget configuration UI: right-click the widget and open the `翻译服务` page. The same page lets you arrange DeepSeek, OpenAI, and Google Translate in the order they should be attempted. Both sentence translation and optional online word translation use that order.
-
-Environment variables are also supported:
+Environment variables and `~/.config/selection-translator/config.json` take precedence over Plasma widget configuration. Supported environment variables include:
 
 ```sh
 export DEEPSEEK_API_KEY='sk-...'
 export DEEPSEEK_MODEL='deepseek-v4-flash'
-```
-
-OpenAI is also supported:
-
-```sh
 export OPENAI_API_KEY='sk-...'
 export OPENAI_MODEL='gpt-5-nano'
 ```
 
-or with a config file:
+## How It Works
 
-```sh
-mkdir -p ~/.config/selection-translator
-cp config.example.json ~/.config/selection-translator/config.json
-chmod 600 ~/.config/selection-translator/config.json
-```
+One session D-Bus service owns the selection listeners and shared translation state. On Wayland it uses `wl-paste --watch`; on X11 it polls through `xclip`, with `xsel` available as a PRIMARY-selection fallback. Plasma widgets receive D-Bus state signals, while the GNOME extension watches the same shared state file.
 
-Then edit `~/.config/selection-translator/config.json` and set `deepseek_api_key` or `openai_api_key`. Command-line options, environment variables, and this file take precedence over the Plasma widget configuration.
+The service avoids duplicate online requests, rejects stale results, caches successful online translations, and synchronizes multiple frontend instances. Clipboard-triggered translation can be disabled; manual refresh remains available.
 
 ## Privacy
 
-Single-word dictionary lookups are local. Text is sent to an online service only after you explicitly confirm a sentence translation or request online translation for a word. Online translations are cached locally, including the source text. API keys saved through the widget settings are stored in the Plasma user configuration and are not encrypted. See [PRIVACY.md](PRIVACY.md) for details.
+Single-word dictionary lookups are local. Selected text is sent to an online service only after you confirm sentence translation or request online translation for a word. Online translation caches contain source and translated text.
+
+API keys saved through Plasma settings are stored in the per-user Plasma configuration and are not encrypted. The GNOME installer creates a new configuration file with user-only permissions. See [PRIVACY.md](PRIVACY.md) for details.
+
+## Development
+
+Run the backend and state tests with:
+
+```sh
+python3 -m unittest discover -s tests -p 'test_*.py' -v
+QT_QPA_PLATFORM=offscreen qmltestrunner -input tests/tst_state_transitions.qml
+QT_QPA_PLATFORM=offscreen qmltestrunner -input tests/tst_config_ui.qml
+```
 
 ## License
 
-The widget is released under the [MIT License](LICENSE). Dictionary data comes from [ECDICT](https://github.com/skywind3000/ECDICT) under the MIT License; its license is included in the package.
+The project is released under the [MIT License](LICENSE). Dictionary data comes from [ECDICT](https://github.com/skywind3000/ECDICT) under the MIT License; its license is included in the package.
