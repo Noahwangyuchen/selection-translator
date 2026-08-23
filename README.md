@@ -95,6 +95,10 @@ The installer:
 - creates and starts `~/.config/systemd/user/selection-translator.service`;
 - creates `~/.config/selection-translator/config.json` only if it does not already exist.
 
+The service starts with the GNOME session so the display environment is ready
+before selection monitoring begins. Long translations are truncated in the top
+panel, while popup definitions wrap within a bounded width.
+
 A GNOME Shell restart or log out/in may be required after the first installation. Set `PYTHON_BIN` before running the installer if `dbus` and `gi` are provided by a non-default Python interpreter.
 
 ## Build Plasma From Source

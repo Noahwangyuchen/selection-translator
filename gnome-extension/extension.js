@@ -3,6 +3,7 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Pango from 'gi://Pango';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -26,6 +27,8 @@ class TranslatorIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'selection-translator-panel-label',
         });
+        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        this._label.clutter_text.single_line_mode = true;
         box.add_child(this._label);
         this.add_child(box);
 
@@ -37,6 +40,19 @@ class TranslatorIndicator extends PanelMenu.Button {
         this._translateSentence = new PopupMenu.PopupMenuItem('翻译整句');
         this._translateWord = new PopupMenu.PopupMenuItem('在线翻译这个单词');
         this._refresh = new PopupMenu.PopupMenuItem('刷新当前选区');
+
+        for (const item of [
+            this._title,
+            this._phonetic,
+            this._translation,
+            this._definition,
+            this._engine,
+        ]) {
+            item.label.add_style_class_name('selection-translator-detail-label');
+            item.label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+            item.label.clutter_text.line_wrap = true;
+            item.label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+        }
 
         for (const item of [
             this._title,
@@ -129,6 +145,13 @@ class TranslatorIndicator extends PanelMenu.Button {
         return String(text ?? '').replace(/\\n|\n/g, '  ');
     }
 
+    _panelText(text) {
+        const characters = Array.from(this._displayText(text));
+        return characters.length > 36
+            ? `${characters.slice(0, 36).join('')}…`
+            : characters.join('');
+    }
+
     _apply(state) {
         this._state = state;
         const word = state.word ?? '';
@@ -139,7 +162,7 @@ class TranslatorIndicator extends PanelMenu.Button {
         const onlineWord = state.wordOnlineTranslation ?? '';
         const message = state.message ?? '请选择英文单词';
 
-        this._label.text = this._displayText(busy
+        this._label.text = this._panelText(busy
             ? '翻译中...'
             : (sentenceTranslated ? translated : (state.found ? translated : '')));
         this._title.label.text = word || state.text || '划词翻译';

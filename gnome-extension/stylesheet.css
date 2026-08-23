@@ -2,3 +2,7 @@
   max-width: 18em;
   padding-left: 6px;
 }
+
+.selection-translator-detail-label {
+  max-width: 32em;
+}

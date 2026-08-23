@@ -56,21 +56,31 @@ fi
 cat >"$UNIT_DIR/selection-translator.service" <<EOF
 [Unit]
 Description=Selection Translator service for GNOME
-PartOf=graphical-session.target
-After=graphical-session.target
+PartOf=gnome-session.target
+After=gnome-session.target
 
 [Service]
 Type=simple
+PassEnvironment=DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_SESSION_TYPE
 ExecStart="$PYTHON_BIN" "$APP_DIR/selection_translator.py" --daemon --db "$APP_DIR/ecdict.sqlite3"
 Restart=on-failure
 RestartSec=2
 
 [Install]
-WantedBy=graphical-session.target
+WantedBy=gnome-session.target
 EOF
 
 systemctl --user daemon-reload
-systemctl --user enable selection-translator.service
+SESSION_ENV=()
+for NAME in DISPLAY WAYLAND_DISPLAY XAUTHORITY XDG_SESSION_TYPE; do
+  if [[ -n "${!NAME:-}" ]]; then
+    SESSION_ENV+=("$NAME")
+  fi
+done
+if (( ${#SESSION_ENV[@]} > 0 )); then
+  systemctl --user import-environment "${SESSION_ENV[@]}"
+fi
+systemctl --user reenable selection-translator.service
 systemctl --user restart selection-translator.service
 
 echo "Installed Selection Translator GNOME files."
