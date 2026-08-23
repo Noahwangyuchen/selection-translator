@@ -4,5 +4,5 @@
   "description": "GNOME panel frontend for Selection Translator",
   "shell-version": ["46"],
   "version": 1,
-  "url": "https://github.com/Noahwangyuchen/plasma-selection-translator"
+  "url": "https://github.com/Noahwangyuchen/selection-translator"
 }

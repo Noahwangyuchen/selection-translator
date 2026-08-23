@@ -24,6 +24,22 @@ Single words are looked up locally in the bundled ECDICT database. Sentence tran
 
 GNOME Wayland may prevent background access to another application's primary selection. Copying the text may work as a fallback, but global selection monitoring is not guaranteed.
 
+## Other Desktop Environments
+
+Not using Plasma or GNOME? Clone the repository and ask your coding agent to adapt the frontend to your desktop environment. The dictionary, translation providers, cache, state transitions, and D-Bus backend are already separated from the desktop UI, so a new port can usually reuse the existing core.
+
+For example, give your coding agent the repository and a prompt like:
+
+```text
+Adapt Selection Translator to <desktop environment and version>.
+Reuse the existing Python translation backend and shared state.
+Add a native panel UI, an idempotent user installer, documentation, and tests.
+Keep offline word lookup local and require explicit confirmation before sending text online.
+Do not break the existing Plasma or GNOME frontends.
+```
+
+Ports to other desktops are welcome as pull requests.
+
 ## Requirements
 
 Common requirements:
@@ -42,7 +58,7 @@ On Arch Linux, the common package names are `python-dbus`, `python-gobject`, and
 
 ## KDE Plasma Installation
 
-The `.plasmoid` release contains the Plasma frontend and the complete offline dictionary. Download it from the latest [GitHub Release](https://github.com/Noahwangyuchen/plasma-selection-translator/releases/latest), then run:
+The `.plasmoid` release contains the Plasma frontend and the complete offline dictionary. Download it from the latest [GitHub Release](https://github.com/Noahwangyuchen/selection-translator/releases/latest), then run:
 
 ```sh
 kpackagetool6 -t Plasma/Applet -i selection-translator-0.3.3.plasmoid
@@ -59,8 +75,8 @@ The GNOME frontend is currently installed from the source repository; it is not 
 First clone the repository and build the dictionary:
 
 ```sh
-git clone https://github.com/Noahwangyuchen/plasma-selection-translator.git
-cd plasma-selection-translator
+git clone https://github.com/Noahwangyuchen/selection-translator.git
+cd selection-translator
 curl -L -o vendor/ecdict.csv https://raw.githubusercontent.com/skywind3000/ECDICT/master/ecdict.csv
 python3 scripts/build_ecdict_sqlite.py vendor/ecdict.csv package/contents/data/ecdict.sqlite3
 ```
