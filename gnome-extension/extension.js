@@ -48,10 +48,8 @@ class TranslatorIndicator extends PanelMenu.Button {
             this._definition,
             this._engine,
         ]) {
-            item.label.add_style_class_name('selection-translator-detail-label');
             item.label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
-            item.label.clutter_text.line_wrap = true;
-            item.label.clutter_text.line_wrap_mode = Pango.WrapMode.WORD_CHAR;
+            item.label.clutter_text.line_wrap = false;
         }
 
         for (const item of [
@@ -137,7 +135,7 @@ class TranslatorIndicator extends PanelMenu.Button {
     }
 
     _setItem(item, text, visible = true) {
-        item.label.text = this._displayText(text);
+        item.label.text = this._detailText(text);
         item.visible = visible && item.label.text.length > 0;
     }
 
@@ -150,6 +148,34 @@ class TranslatorIndicator extends PanelMenu.Button {
         return characters.length > 36
             ? `${characters.slice(0, 36).join('')}…`
             : characters.join('');
+    }
+
+    _detailText(text, lineLength = 72) {
+        const source = this._displayText(text).replace(/\s+/g, ' ').trim();
+        if (!source)
+            return '';
+
+        const lines = [];
+        let line = '';
+        for (const originalWord of source.split(' ')) {
+            let word = originalWord;
+            if (line && line.length + word.length + 1 <= lineLength) {
+                line += ` ${word}`;
+                continue;
+            }
+            if (line) {
+                lines.push(line);
+                line = '';
+            }
+            while (word.length > lineLength) {
+                lines.push(word.slice(0, lineLength));
+                word = word.slice(lineLength);
+            }
+            line = word;
+        }
+        if (line)
+            lines.push(line);
+        return lines.join('\n');
     }
 
     _apply(state) {
@@ -165,7 +191,7 @@ class TranslatorIndicator extends PanelMenu.Button {
         this._label.text = this._panelText(busy
             ? '翻译中...'
             : (sentenceTranslated ? translated : (state.found ? translated : '')));
-        this._title.label.text = word || state.text || '划词翻译';
+        this._title.label.text = this._detailText(word || state.text || '划词翻译');
         this._setItem(this._phonetic, state.phonetic ? `/${state.phonetic}/` : '', Boolean(state.found));
         this._setItem(this._translation, state.found || sentenceTranslated ? translated : message, true);
         this._setItem(this._definition, state.definition ?? '', Boolean(state.found));
