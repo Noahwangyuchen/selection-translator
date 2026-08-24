@@ -545,11 +545,26 @@ PlasmoidItem {
         }
 
         footer: PlasmaExtras.PlasmoidHeading {
+            visible: !(Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentDrawsPlasmoidHeading)
+
             contentItem: RowLayout {
+                spacing: 0
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
                 PlasmaComponents3.ToolButton {
                     text: "刷新"
                     icon.name: "view-refresh"
+                    display: QQC2.AbstractButton.IconOnly
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2
                     onClicked: root.refresh()
+
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: text
                 }
             }
         }
