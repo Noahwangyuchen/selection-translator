@@ -625,7 +625,7 @@ def begin_word_translation():
     with shared_state_lock():
         state = read_shared_state()
         word = normalize_word(state.get("word", ""))
-        if not state.get("found") or not word:
+        if not word:
             return "", {"translated": False, "message": "请先选择一个英文单词"}
 
         started_at = state.get("wordOnlineStartedAt", 0)

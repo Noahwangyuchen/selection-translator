@@ -126,7 +126,11 @@ function reduce(current, payload) {
     clearSentence(next)
     if (payload.word) {
         next.currentWord = cleanDisplayText(payload.word)
-        next.statusText = "本地词库没有这个词"
+        next.wordOnlineTranslation = cleanDisplayText(payload.wordOnlineTranslation)
+        next.wordOnlineEngine = cleanDisplayText(payload.wordOnlineEngine)
+        next.wordOnlineError = cleanDisplayText(payload.wordOnlineError)
+        next.wordOnlineTranslating = Boolean(payload.wordOnlineTranslating)
+        next.statusText = payload.message || "本地词库没有这个词"
     } else {
         next.statusText = payload.message || "请选择英文单词"
     }

@@ -218,6 +218,27 @@ class SharedSentenceStateTests(unittest.TestCase):
         self.assertEqual(finished["wordOnlineTranslation"], "示例")
         self.assertFalse(finished["wordOnlineTranslating"])
 
+    def test_missing_dictionary_word_can_use_online_translation(self):
+        translator.write_shared_state({
+            "found": False,
+            "word": "codexium",
+            "message": "本地词库没有这个词",
+        })
+
+        request_id, started = translator.begin_word_translation()
+        finished = translator.finish_word_translation(
+            request_id,
+            "代码元素",
+            "test",
+        )
+
+        self.assertTrue(request_id)
+        self.assertFalse(started["found"])
+        self.assertTrue(started["wordOnlineTranslating"])
+        self.assertEqual(finished["word"], "codexium")
+        self.assertEqual(finished["wordOnlineTranslation"], "代码元素")
+        self.assertFalse(finished["wordOnlineTranslating"])
+
     def test_new_word_rejects_old_online_translation(self):
         translator.write_shared_state({
             "found": True,

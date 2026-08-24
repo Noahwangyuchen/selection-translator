@@ -149,7 +149,7 @@ PlasmoidItem {
     }
 
     function translateWord() {
-        if (!hasResult || wordOnlineTranslating) return
+        if (currentWord.length === 0 || wordOnlineTranslating) return
         if (!serviceWatcher.registered) {
             startListener()
             wordOnlineError = "翻译服务正在启动..."
@@ -442,6 +442,13 @@ PlasmoidItem {
                         opacity: 0.62
                         Layout.fillWidth: true
                     }
+
+                }
+
+                ColumnLayout {
+                    visible: root.currentWord.length > 0
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
 
                     PlasmaComponents3.Button {
                         text: root.wordOnlineTranslating
