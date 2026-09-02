@@ -1,12 +1,14 @@
 # Selection Translator / 划词翻译
 
-Selection Translator displays Chinese translations for English text selected on the desktop. It provides separate panel frontends for KDE Plasma 6 and GNOME Shell 46, backed by the same Python translation service.
+Selection Translator displays Chinese translations for English text and Sanskrit transliteration selected on the desktop. It provides separate panel frontends for KDE Plasma 6 and GNOME Shell 46, backed by the same Python translation service.
 
-Single words are looked up locally in the bundled ECDICT database. Sentence translation and optional online word translation support DeepSeek, OpenAI, and Google Translate, and are only triggered after explicit user action.
+Single Latin-script words are looked up locally in the bundled ECDICT database first. Text that needs an online translation remains local until the GNOME translation panel is opened or the Plasma translation action is activated. The AI then determines whether ambiguous Latin-script text is English or Sanskrit transliteration and translates it into Chinese. For Chinese selections, it returns an English translation and Hanyu Pinyin. Sanskrit and Chinese translation use a configured DeepSeek or OpenAI API directly; English online translation can also fall back to Google Translate.
 
 ## Features
 
 - Offline Chinese dictionary lookup for selected English words.
+- Intent-triggered Sanskrit-to-Chinese translation for IAST and plain Latin transliteration.
+- Intent-triggered Chinese-to-English translation with Hanyu Pinyin.
 - Optional online translation for sentences and individual words.
 - Configurable DeepSeek, OpenAI, and Google Translate priority.
 - Optional clipboard monitoring.
@@ -132,11 +134,11 @@ export OPENAI_MODEL='gpt-5-nano'
 
 One session D-Bus service owns the selection listeners and shared translation state. On Wayland it uses `wl-paste --watch`; on X11 it polls through `xclip`, with `xsel` available as a PRIMARY-selection fallback. Plasma widgets receive D-Bus state signals, while the GNOME extension watches the same shared state file.
 
-The service avoids duplicate online requests, rejects stale results, caches successful online translations, and synchronizes multiple frontend instances. Clipboard-triggered translation can be disabled; manual refresh remains available.
+The service waits briefly for a changing selection to stabilize, avoids duplicate online requests, rejects stale results, caches successful online translations, and synchronizes multiple frontend instances. This prevents Chinese passages, intermediate fragments produced while dragging, and selections made for unrelated purposes from triggering API calls before the user opens the translation panel. Clipboard-triggered translation can be disabled; manual refresh remains available.
 
 ## Privacy
 
-Single-word dictionary lookups are local. Selected text is sent to an online service only after you confirm sentence translation or request online translation for a word. Online translation caches contain source and translated text.
+Single-word dictionary lookups and selection classification are local. Text is sent to an online service only when the GNOME translation panel is opened or a translation action is activated. Previously cached translations can be displayed without another request. Online translation caches contain source and translated text.
 
 API keys saved through Plasma settings are stored in the per-user Plasma configuration and are not encrypted. The GNOME installer creates a new configuration file with user-only permissions. See [PRIVACY.md](PRIVACY.md) for details.
 
