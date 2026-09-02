@@ -111,9 +111,9 @@ class SharedSentenceStateTests(unittest.TestCase):
         scheduled = {}
         cancelled = []
 
-        def schedule(_delay, callback):
-            scheduled[1] = callback
-            return 1
+        def schedule(delay, callback):
+            scheduled[delay] = callback
+            return delay
 
         debouncer = translator.SelectionEventDebouncer(
             processed.append,
@@ -124,8 +124,60 @@ class SharedSentenceStateTests(unittest.TestCase):
         self.assertEqual(processed, [])
 
         debouncer.handle("hello")
-        self.assertEqual(cancelled, [1])
+        self.assertEqual(cancelled, [translator.EMPTY_SELECTION_DELAY_MS])
+        self.assertEqual(processed, [])
+        scheduled[translator.STABLE_SELECTION_DELAY_MS]()
         self.assertEqual(processed, ["hello"])
+
+    def test_changing_selection_only_processes_final_stable_text(self):
+        processed = []
+        scheduled = {}
+        cancelled = []
+        next_source_id = 0
+
+        def schedule(_delay, callback):
+            nonlocal next_source_id
+            next_source_id += 1
+            scheduled[next_source_id] = callback
+            return next_source_id
+
+        debouncer = translator.SelectionEventDebouncer(
+            processed.append,
+            schedule,
+            cancelled.append,
+        )
+        debouncer.handle("rat")
+        debouncer.handle("ratna")
+        debouncer.handle("ratnatrayāya")
+
+        self.assertEqual(processed, [])
+        self.assertEqual(cancelled, [1, 2])
+        scheduled[3]()
+        self.assertEqual(processed, ["ratnatrayāya"])
+
+    def test_cleared_selection_cancels_pending_nonempty_text(self):
+        processed = []
+        scheduled = {}
+        cancelled = []
+        next_source_id = 0
+
+        def schedule(_delay, callback):
+            nonlocal next_source_id
+            next_source_id += 1
+            scheduled[next_source_id] = callback
+            return next_source_id
+
+        debouncer = translator.SelectionEventDebouncer(
+            processed.append,
+            schedule,
+            cancelled.append,
+        )
+        debouncer.handle("temporary")
+        debouncer.handle("")
+
+        self.assertEqual(cancelled, [1])
+        scheduled[2]()
+        self.assertEqual(processed, [""])
 
     def test_empty_selection_clears_after_delay(self):
         processed = []
@@ -177,11 +229,11 @@ class SharedSentenceStateTests(unittest.TestCase):
             "openai_base_url": "https://example.invalid",
         }
 
-        def google(_text):
+        def google(_text, _language=None):
             calls.append("google")
             raise RuntimeError("unavailable")
 
-        def openai(_text, _config):
+        def openai(_text, _config, _language=None):
             calls.append("openai")
             return "译文", "OpenAI test"
 
@@ -196,6 +248,135 @@ class SharedSentenceStateTests(unittest.TestCase):
         self.assertEqual(calls, ["google", "openai"])
         self.assertEqual((translated, engine), ("译文", "OpenAI test"))
         deepseek.assert_not_called()
+
+    def test_iast_is_detected_as_sanskrit(self):
+        self.assertEqual(translator.source_language("śāntiḥ"), "sanskrit")
+        self.assertEqual(translator.source_language("s\u0301a\u0304ntih\u0323"), "sanskrit")
+        self.assertTrue(translator.looks_like_sentence("śāntiḥ"))
+
+    def test_selection_containing_chinese_waits_for_panel_intent(self):
+        state = translator.selection_state("中文 ratnatrayāya", "/missing.sqlite3")
+
+        self.assertTrue(state["sentenceCandidate"])
+        self.assertTrue(state["intentRequired"])
+        self.assertEqual(state["sourceLanguage"], "chinese")
+        self.assertNotIn("autoTranslate", state)
+
+    def test_chinese_prompt_requests_english_and_pinyin(self):
+        prompt = translator.translation_system_prompt("三宝", "chinese")
+
+        self.assertIn("English", prompt)
+        self.assertIn("Pinyin", prompt)
+
+    def test_unknown_latin_word_waits_for_panel_intent(self):
+        with mock.patch.object(translator, "lookup", return_value=None):
+            state = translator.selection_state("dharma", "/missing.sqlite3")
+
+        self.assertTrue(state["sentenceCandidate"])
+        self.assertTrue(state["intentRequired"])
+        self.assertEqual(state["sourceLanguage"], "latin")
+        self.assertNotIn("autoTranslate", state)
+
+    def test_iast_sanskrit_waits_for_panel_intent(self):
+        state = translator.selection_state("ratnatrayāya", "/missing.sqlite3")
+
+        self.assertTrue(state["sentenceCandidate"])
+        self.assertTrue(state["intentRequired"])
+        self.assertEqual(state["sourceLanguage"], "sanskrit")
+        self.assertNotIn("autoTranslate", state)
+
+    def test_plain_latin_sentence_uses_auto_language_prompt(self):
+        state = translator.selection_state("tat tvam asi", "/missing.sqlite3")
+        prompt = translator.translation_system_prompt(state["text"], state["sourceLanguage"])
+
+        self.assertEqual(state["sourceLanguage"], "latin")
+        self.assertIn("English or Sanskrit", prompt)
+
+    def test_sanskrit_fallback_translates_without_confirmation(self):
+        args = mock.Mock()
+        with mock.patch.object(
+            translator,
+            "translate_sentence",
+            return_value=("存在、意识与喜乐", "test"),
+        ) as translate:
+            result = translator.translate_text_sync("saccidananda", args, "sanskrit")
+
+        self.assertTrue(result["translated"])
+        self.assertEqual(result["translation"], "存在、意识与喜乐")
+        translate.assert_called_once_with("saccidananda", args, "sanskrit")
+
+    def test_known_english_word_stays_dictionary_result(self):
+        entry = {
+            "word": "example",
+            "phonetic": "",
+            "translation": "例子",
+            "definition": "",
+            "exchange": "",
+        }
+        with mock.patch.object(translator, "lookup", return_value=entry):
+            state = translator.selection_state("example", "/dictionary.sqlite3")
+
+        self.assertTrue(state["found"])
+        self.assertEqual(state["translation"], "例子")
+        self.assertNotIn("sentenceCandidate", state)
+
+    def test_sanskrit_and_english_use_distinct_cache_keys(self):
+        self.assertNotEqual(
+            translator.cache_key("rama", "english"),
+            translator.cache_key("rama", "sanskrit"),
+        )
+
+    def test_sanskrit_prompt_targets_chinese(self):
+        prompt = translator.translation_system_prompt("dharma", "sanskrit")
+        self.assertIn("Sanskrit", prompt)
+        self.assertIn("Simplified Chinese", prompt)
+        self.assertIn("inflection", prompt)
+
+    def test_sanskrit_translation_uses_configured_ai_only(self):
+        config = {
+            "service_order": ["google", "deepseek", "openai"],
+            "deepseek_api_key": "configured",
+            "deepseek_model": "test",
+            "deepseek_base_url": "https://example.invalid",
+            "openai_api_key": "",
+            "openai_model": "test",
+            "openai_base_url": "https://example.invalid",
+        }
+        with (
+            mock.patch.object(translator, "load_config", return_value=config),
+            mock.patch.object(
+                translator,
+                "deepseek_translate",
+                return_value=("向三宝", "DeepSeek test"),
+            ) as deepseek,
+            mock.patch.object(translator, "google_translate") as google,
+            mock.patch.object(translator, "openai_translate") as openai,
+        ):
+            result = translator.translate_sentence("ratnatrayāya", language="sanskrit")
+
+        self.assertEqual(result, ("向三宝", "DeepSeek test"))
+        deepseek.assert_called_once()
+        google.assert_not_called()
+        openai.assert_not_called()
+
+    def test_sanskrit_without_ai_key_fails_without_google_timeout(self):
+        config = {
+            "service_order": ["deepseek", "openai", "google"],
+            "deepseek_api_key": "",
+            "deepseek_model": "test",
+            "deepseek_base_url": "https://example.invalid",
+            "openai_api_key": "",
+            "openai_model": "test",
+            "openai_base_url": "https://example.invalid",
+        }
+        with (
+            mock.patch.object(translator, "load_config", return_value=config),
+            mock.patch.object(translator, "google_translate") as google,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "DEEPSEEK_API_KEY"):
+                translator.translate_sentence("śāntiḥ", language="sanskrit")
+
+        google.assert_not_called()
 
     def test_word_online_translation_preserves_dictionary_state(self):
         translator.write_shared_state({

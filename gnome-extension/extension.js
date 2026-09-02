@@ -3,6 +3,7 @@ import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import St from 'gi://St';
 import Clutter from 'gi://Clutter';
+import Pango from 'gi://Pango';
 
 import {Extension} from 'resource:///org/gnome/shell/extensions/extension.js';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
@@ -15,6 +16,7 @@ class TranslatorIndicator extends PanelMenu.Button {
         super._init(0.0, 'Selection Translator', false);
         this._paths = paths;
         this._state = {};
+        this._intentRequestText = '';
 
         const box = new St.BoxLayout({style_class: 'panel-status-menu-box'});
         box.add_child(new St.Icon({
@@ -26,6 +28,8 @@ class TranslatorIndicator extends PanelMenu.Button {
             y_align: Clutter.ActorAlign.CENTER,
             style_class: 'selection-translator-panel-label',
         });
+        this._label.clutter_text.ellipsize = Pango.EllipsizeMode.END;
+        this._label.clutter_text.single_line_mode = true;
         box.add_child(this._label);
         this.add_child(box);
 
@@ -41,6 +45,17 @@ class TranslatorIndicator extends PanelMenu.Button {
         for (const item of [
             this._title,
             this._phonetic,
+            this._translation,
+            this._definition,
+            this._engine,
+        ]) {
+            item.label.clutter_text.ellipsize = Pango.EllipsizeMode.NONE;
+            item.label.clutter_text.line_wrap = false;
+        }
+
+        for (const item of [
+            this._title,
+            this._phonetic,
             new PopupMenu.PopupSeparatorMenuItem(),
             this._translation,
             this._definition,
@@ -52,12 +67,13 @@ class TranslatorIndicator extends PanelMenu.Button {
         ])
             this.menu.addMenuItem(item);
 
-        this._translateSentence.connect('activate', () => {
-            const text = String(this._state.text ?? '');
-            this._run(['--translate', '--text', text]);
-        });
+        this._translateSentence.connect('activate', () => this._translateCandidate());
         this._translateWord.connect('activate', () => this._run(['--translate-word-current']));
         this._refresh.connect('activate', () => this._run(['--selection']));
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen)
+                this._translateCandidate();
+        });
 
         this._cacheDir = Gio.File.new_for_path(GLib.build_filenamev([
             GLib.get_user_cache_dir(),
@@ -108,6 +124,17 @@ class TranslatorIndicator extends PanelMenu.Button {
         }
     }
 
+    _translateCandidate() {
+        if (!this._state.sentenceCandidate || this._state.translating)
+            return;
+        const text = String(this._state.text ?? '');
+        if (!text || this._intentRequestText === text)
+            return;
+        this._intentRequestText = text;
+        const language = String(this._state.sourceLanguage ?? 'latin');
+        this._run(['--translate', '--source-language', language, '--text', text]);
+    }
+
     _loadState() {
         const stateFile = this._cacheDir.get_child('shared-state.json');
         try {
@@ -121,12 +148,47 @@ class TranslatorIndicator extends PanelMenu.Button {
     }
 
     _setItem(item, text, visible = true) {
-        item.label.text = this._displayText(text);
+        item.label.text = this._detailText(text);
         item.visible = visible && item.label.text.length > 0;
     }
 
     _displayText(text) {
         return String(text ?? '').replace(/\\n|\n/g, '  ');
+    }
+
+    _panelText(text) {
+        const characters = Array.from(this._displayText(text));
+        return characters.length > 36
+            ? `${characters.slice(0, 36).join('')}…`
+            : characters.join('');
+    }
+
+    _detailText(text, lineLength = 72) {
+        const source = this._displayText(text).replace(/\s+/g, ' ').trim();
+        if (!source)
+            return '';
+
+        const lines = [];
+        let line = '';
+        for (const originalWord of source.split(' ')) {
+            let word = originalWord;
+            if (line && line.length + word.length + 1 <= lineLength) {
+                line += ` ${word}`;
+                continue;
+            }
+            if (line) {
+                lines.push(line);
+                line = '';
+            }
+            while (word.length > lineLength) {
+                lines.push(word.slice(0, lineLength));
+                word = word.slice(lineLength);
+            }
+            line = word;
+        }
+        if (line)
+            lines.push(line);
+        return lines.join('\n');
     }
 
     _apply(state) {
@@ -138,11 +200,13 @@ class TranslatorIndicator extends PanelMenu.Button {
         const busy = Boolean(state.translating);
         const onlineWord = state.wordOnlineTranslation ?? '';
         const message = state.message ?? '请选择英文单词';
+        if (!sentenceCandidate || busy)
+            this._intentRequestText = '';
 
-        this._label.text = this._displayText(busy
+        this._label.text = this._panelText(busy
             ? '翻译中...'
-            : (sentenceTranslated ? translated : (state.found ? translated : '')));
-        this._title.label.text = word || state.text || '划词翻译';
+            : (sentenceTranslated ? translated : (state.found ? translated : (sentenceCandidate ? '待翻译' : ''))));
+        this._title.label.text = this._detailText(word || state.text || '划词翻译');
         this._setItem(this._phonetic, state.phonetic ? `/${state.phonetic}/` : '', Boolean(state.found));
         this._setItem(this._translation, state.found || sentenceTranslated ? translated : message, true);
         this._setItem(this._definition, state.definition ?? '', Boolean(state.found));
@@ -153,10 +217,16 @@ class TranslatorIndicator extends PanelMenu.Button {
         );
         this._translateSentence.visible = sentenceCandidate || busy;
         this._translateSentence.setSensitive(sentenceCandidate && !busy);
-        this._translateSentence.label.text = busy ? '翻译中...' : '翻译整句';
+        this._translateSentence.label.text = busy ? '翻译中...' : 'AI 翻译当前选区';
         this._translateWord.visible = Boolean(word);
         this._translateWord.setSensitive(!state.wordOnlineTranslating);
         this._translateWord.label.text = state.wordOnlineTranslating ? '在线翻译中...' : '在线翻译这个单词';
+
+        if (this.menu.isOpen && sentenceCandidate && !busy)
+            GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+                this._translateCandidate();
+                return GLib.SOURCE_REMOVE;
+            });
     }
 
     destroy() {

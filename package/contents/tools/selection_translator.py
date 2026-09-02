@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 import uuid
@@ -18,18 +19,45 @@ import uuid
 
 WORD_RE = re.compile(r"[A-Za-z][A-Za-z'_-]{0,63}")
 SPACE_RE = re.compile(r"\s+")
+HAN_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
+DEVANAGARI_LETTER_RE = re.compile(r"[\u0904-\u0939\u0958-\u0961]")
+SANSKRIT_IAST_RE = re.compile(
+    r"[\u0101\u012b\u016b\u1e5b\u1e5d\u1e37\u1e39\u1e43\u1e41\u1e25\u015b\u1e63\u1e45\u00f1\u1e6d\u1e0d\u1e47"
+    r"\u0100\u012a\u016a\u1e5a\u1e5c\u1e36\u1e38\u1e42\u1e40\u1e24\u015a\u1e62\u1e44\u00d1\u1e6c\u1e0c\u1e46]"
+)
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_MODEL = "gpt-5-nano"
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_SERVICE_ORDER = ("deepseek", "openai", "google")
 EMPTY_SELECTION_DELAY_MS = 300
+STABLE_SELECTION_DELAY_MS = 650
 DBUS_SERVICE = "org.local.SelectionTranslator"
 DBUS_PATH = "/org/local/SelectionTranslator"
 DBUS_INTERFACE = "org.local.SelectionTranslator"
-TRANSLATION_SYSTEM_PROMPT = (
+ENGLISH_TRANSLATION_SYSTEM_PROMPT = (
     "You are a translation engine. Translate the user's English text into Simplified Chinese. "
     "Return only the translated Chinese text. Do not explain, add notes, quote the source, or use Markdown."
+)
+SANSKRIT_TRANSLATION_SYSTEM_PROMPT = (
+    "You are a Sanskrit translation engine. Translate the user's Sanskrit text into Simplified Chinese. "
+    "The source may use Devanagari or IAST transliteration, with optional hyphens or spaces. "
+    "Analyze compounds and inflection internally, including case endings, and express their relation naturally in Chinese. "
+    "Use established Chinese Buddhist terminology and preserve proper names when no established translation exists. "
+    "Return only the translated Chinese text. Do not explain, add notes, quote the source, or use Markdown."
+)
+LATIN_TRANSLATION_SYSTEM_PROMPT = (
+    "You are a translation engine. The user's Latin-script text may be English or Sanskrit transliteration "
+    "written in IAST or plain ASCII. Identify the language internally and translate it into Simplified Chinese. "
+    "For Sanskrit, analyze compounds and inflection internally, use established Chinese Buddhist terminology, "
+    "and express case relations naturally. Return only the translated Chinese text. "
+    "Do not explain, add notes, quote the source, or use Markdown."
+)
+CHINESE_TRANSLATION_SYSTEM_PROMPT = (
+    "You are a Chinese translation and pronunciation engine. Translate the user's Chinese text into natural English "
+    "and provide standard Hanyu Pinyin with tone marks. Return exactly two plain-text lines: the English translation "
+    "on the first line, and '拼音：' followed by the pinyin on the second line. Do not add notes, quote the source, "
+    "or use Markdown."
 )
 
 
@@ -106,16 +134,40 @@ def normalize_word(text):
 
 
 def normalize_text(text):
-    return SPACE_RE.sub(" ", (text or "").strip())
+    normalized = unicodedata.normalize("NFC", text or "")
+    return SPACE_RE.sub(" ", normalized.strip())
 
 
 def english_words(text):
     return [match.group(0).strip("'_-") for match in WORD_RE.finditer(text or "")]
 
 
+def source_language(text):
+    normalized = unicodedata.normalize("NFC", text or "")
+    if DEVANAGARI_LETTER_RE.search(normalized) or SANSKRIT_IAST_RE.search(normalized):
+        return "sanskrit"
+    return "english"
+
+
+def resolve_source_language(text, language=None):
+    if language in ("english", "sanskrit", "latin", "chinese"):
+        return language
+    return source_language(text)
+
+
+def translation_system_prompt(text, language=None):
+    language = resolve_source_language(text, language)
+    if language == "sanskrit":
+        return SANSKRIT_TRANSLATION_SYSTEM_PROMPT
+    if language == "latin":
+        return LATIN_TRANSLATION_SYSTEM_PROMPT
+    if language == "chinese":
+        return CHINESE_TRANSLATION_SYSTEM_PROMPT
+    return ENGLISH_TRANSLATION_SYSTEM_PROMPT
+
+
 def looks_like_sentence(text):
-    words = english_words(text)
-    return len(words) > 1
+    return source_language(text) == "sanskrit" or len(english_words(text)) > 1
 
 
 def lookup(db_path, word):
@@ -260,14 +312,28 @@ class SelectionEventDebouncer:
         self.schedule = schedule
         self.cancel = cancel
         self.pending_clear = None
+        self.pending_selection = None
+        self.pending_text = ""
 
     def handle(self, text):
         if normalize_text(text):
             self.cancel_clear()
-            self.process(text)
+            self.cancel_selection()
+            self.pending_text = text
+            self.pending_selection = self.schedule(
+                STABLE_SELECTION_DELAY_MS,
+                self.flush_selection,
+            )
             return
+        self.cancel_selection()
         self.cancel_clear()
         self.pending_clear = self.schedule(EMPTY_SELECTION_DELAY_MS, self.flush_clear)
+
+    def cancel_selection(self):
+        if self.pending_selection is not None:
+            self.cancel(self.pending_selection)
+            self.pending_selection = None
+        self.pending_text = ""
 
     def cancel_clear(self):
         if self.pending_clear is not None:
@@ -277,6 +343,13 @@ class SelectionEventDebouncer:
     def flush_clear(self):
         self.pending_clear = None
         self.process("")
+        return False
+
+    def flush_selection(self):
+        self.pending_selection = None
+        text = self.pending_text
+        self.pending_text = ""
+        self.process(text)
         return False
 
 
@@ -294,7 +367,7 @@ def extract_openai_text(payload):
     return "\n".join(parts).strip()
 
 
-def openai_translate(text, config):
+def openai_translate(text, config, language=None):
     api_key = config["openai_api_key"]
     if not api_key:
         raise RuntimeError("未配置 OPENAI_API_KEY")
@@ -302,7 +375,7 @@ def openai_translate(text, config):
     base_url = config["openai_base_url"].rstrip("/")
     request_payload = {
         "model": config["openai_model"],
-        "instructions": TRANSLATION_SYSTEM_PROMPT,
+        "instructions": translation_system_prompt(text, language),
         "input": text,
         "max_output_tokens": 800,
     }
@@ -343,7 +416,7 @@ def extract_chat_completion_text(payload):
     return ""
 
 
-def deepseek_translate(text, config):
+def deepseek_translate(text, config, language=None):
     api_key = config["deepseek_api_key"]
     if not api_key:
         raise RuntimeError("未配置 DEEPSEEK_API_KEY")
@@ -352,11 +425,12 @@ def deepseek_translate(text, config):
     request_payload = {
         "model": config["deepseek_model"],
         "messages": [
-            {"role": "system", "content": TRANSLATION_SYSTEM_PROMPT},
+            {"role": "system", "content": translation_system_prompt(text, language)},
             {"role": "user", "content": text},
         ],
+        "thinking": {"type": "disabled"},
         "stream": False,
-        "max_tokens": 800,
+        "max_tokens": 300,
     }
     request = urllib.request.Request(
         base_url + "/chat/completions",
@@ -377,10 +451,11 @@ def deepseek_translate(text, config):
     return translated, "DeepSeek " + config["deepseek_model"]
 
 
-def google_translate(text):
+def google_translate(text, language=None):
+    language = resolve_source_language(text, language)
     params = urllib.parse.urlencode({
         "client": "gtx",
-        "sl": "en",
+        "sl": "sa" if language == "sanskrit" else "en",
         "tl": "zh-CN",
         "dt": "t",
         "q": text,
@@ -399,28 +474,40 @@ def google_translate(text):
     return "".join(parts).strip()
 
 
-def translate_sentence(text, args=None):
+def translate_sentence(text, args=None, language=None):
     errors = []
     config = load_config(args)
-    cached = read_translation_cache(text)
+    language = resolve_source_language(text, language)
+    cached = read_translation_cache(text, language)
     if cached:
         return cached["translation"], cached["engine"] + " (缓存)"
 
-    with translation_lock(text):
-        cached = read_translation_cache(text)
+    with translation_lock(text, language):
+        cached = read_translation_cache(text, language)
         if cached:
             return cached["translation"], cached["engine"] + " (缓存)"
 
         backends = {
-            "deepseek": ("DeepSeek", lambda: deepseek_translate(text, config)),
-            "openai": ("OpenAI", lambda: openai_translate(text, config)),
-            "google": ("Google Translate", lambda: (google_translate(text), "Google Translate")),
+            "deepseek": ("DeepSeek", lambda: deepseek_translate(text, config, language)),
+            "openai": ("OpenAI", lambda: openai_translate(text, config, language)),
+            "google": ("Google Translate", lambda: (google_translate(text, language), "Google Translate")),
         }
-        for service_id in config["service_order"]:
+        service_order = config["service_order"]
+        if language in ("sanskrit", "latin", "chinese"):
+            service_order = [
+                service_id
+                for service_id in service_order
+                if service_id in ("deepseek", "openai")
+                and config[service_id + "_api_key"]
+            ]
+            if not service_order:
+                raise RuntimeError("在线 AI 翻译需要先配置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY")
+
+        for service_id in service_order:
             label, translate = backends[service_id]
             try:
                 translated = translate()
-                write_translation_cache(text, translated[0], translated[1])
+                write_translation_cache(text, translated[0], translated[1], language)
                 return translated
             except Exception as error:
                 errors.append(label + ": " + str(error))
@@ -429,8 +516,8 @@ def translate_sentence(text, args=None):
 
 
 class translation_lock:
-    def __init__(self, text):
-        self.path = os.path.join(cache_dir(), cache_key(text) + ".lock")
+    def __init__(self, text, language=None):
+        self.path = os.path.join(cache_dir(), cache_key(text, language) + ".lock")
         self.handle = None
 
     def __enter__(self):
@@ -450,38 +537,46 @@ def cache_dir():
     return os.path.join(base, "selection-translator")
 
 
-def cache_key(text):
-    return hashlib.sha256(normalize_text(text).encode("utf-8")).hexdigest()
+def cache_key(text, language=None):
+    normalized = normalize_text(text)
+    language = resolve_source_language(normalized, language)
+    cache_input = normalized if language == "english" else language + "\0" + normalized
+    return hashlib.sha256(cache_input.encode("utf-8")).hexdigest()
 
 
-def cache_path(text):
-    return os.path.join(cache_dir(), cache_key(text) + ".json")
+def cache_path(text, language=None):
+    return os.path.join(cache_dir(), cache_key(text, language) + ".json")
 
 
-def read_translation_cache(text):
+def read_translation_cache(text, language=None):
+    language = resolve_source_language(text, language)
     try:
-        with open(cache_path(text), "r", encoding="utf-8") as handle:
+        with open(cache_path(text, language), "r", encoding="utf-8") as handle:
             payload = json.load(handle)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
     if payload.get("text") != normalize_text(text):
+        return None
+    if payload.get("sourceLanguage", "english") != language:
         return None
     if not payload.get("translation") or not payload.get("engine"):
         return None
     return payload
 
 
-def write_translation_cache(text, translation, engine):
+def write_translation_cache(text, translation, engine, language=None):
     os.makedirs(cache_dir(), exist_ok=True)
+    language = resolve_source_language(text, language)
     payload = {
         "text": normalize_text(text),
         "translation": translation,
         "engine": engine,
+        "sourceLanguage": language,
     }
-    tmp_path = cache_path(text) + ".tmp"
+    tmp_path = cache_path(text, language) + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as handle:
         json.dump(payload, handle, ensure_ascii=False)
-    os.replace(tmp_path, cache_path(text))
+    os.replace(tmp_path, cache_path(text, language))
 
 
 def shared_state_path():
@@ -520,14 +615,16 @@ class shared_state_lock:
             self.handle.close()
 
 
-def begin_translation(text):
+def begin_translation(text, language=None):
     normalized = normalize_text(text)
+    language = resolve_source_language(normalized, language)
     with shared_state_lock():
         state = read_shared_state()
         started_at = state.get("startedAt", 0)
         still_running = (
             state.get("translating")
             and normalize_text(state.get("text", "")) == normalized
+            and state.get("sourceLanguage", "english") == language
             and isinstance(started_at, (int, float))
             and time.time() - started_at < 45
         )
@@ -540,6 +637,7 @@ def begin_translation(text):
             "sentenceCandidate": False,
             "translating": True,
             "text": normalized,
+            "sourceLanguage": language,
             "message": "翻译中...",
             "requestId": request_id,
             "startedAt": time.time(),
@@ -557,20 +655,22 @@ def finish_translation(request_id, payload):
         return True
 
 
-def sentence_selection_state(text):
+def sentence_selection_state(text, language=None):
     normalized = normalize_text(text)
+    language = resolve_source_language(normalized, language)
     with shared_state_lock():
         state = read_shared_state()
         started_at = state.get("startedAt", 0)
         if (
             state.get("translating")
             and normalize_text(state.get("text", "")) == normalized
+            and state.get("sourceLanguage", "english") == language
             and isinstance(started_at, (int, float))
             and time.time() - started_at < 45
         ):
             return state
 
-        cached = read_translation_cache(normalized)
+        cached = read_translation_cache(normalized, language)
         if cached:
             state = {
                 "translated": True,
@@ -578,24 +678,35 @@ def sentence_selection_state(text):
                 "text": normalized[:500],
                 "translation": cached["translation"],
                 "engine": cached["engine"],
+                "sourceLanguage": language,
             }
         else:
             state = {
                 "found": False,
                 "sentenceCandidate": True,
+                "intentRequired": True,
                 "translating": False,
                 "text": normalized[:500],
                 "wordCount": len(english_words(normalized)),
-                "message": "是否翻译整句？",
+                "sourceLanguage": language,
+                "message": "等待翻译操作",
             }
         write_shared_state_unlocked(state)
         return state
 
 
+def sanskrit_selection_state(text):
+    return sentence_selection_state(text, "sanskrit")
+
+
 def selection_state(text, db_path):
     source_text = normalize_text(text)
+    if HAN_RE.search(source_text):
+        return sentence_selection_state(source_text, "chinese")
+    if source_language(source_text) == "sanskrit":
+        return sanskrit_selection_state(source_text)
     if looks_like_sentence(source_text):
-        return sentence_selection_state(source_text)
+        return sentence_selection_state(source_text, "latin")
 
     word = normalize_word(source_text)
     if not word:
@@ -605,9 +716,7 @@ def selection_state(text, db_path):
 
     entry = lookup(db_path, word)
     if entry is None:
-        state = {"found": False, "word": word, "message": "本地词库没有这个词"}
-        write_shared_state(state)
-        return state
+        return sentence_selection_state(source_text, "latin")
 
     state = {
         "found": True,
@@ -762,12 +871,13 @@ def run_daemon(db_path):
             self.selection_events.handle(str(text))
 
         def process_selection(self, text):
-            self.publish(selection_state(text, self.db_path))
+            state = selection_state(text, self.db_path)
+            self.publish(state)
+            return state
 
         @dbus.service.method(DBUS_INTERFACE, in_signature="", out_signature="s")
         def Refresh(self):
-            state = selection_state(read_selection(), self.db_path)
-            self.publish(state)
+            state = self.process_selection(read_selection())
             return json_state(state)
 
         @dbus.service.method(DBUS_INTERFACE, in_signature="s", out_signature="s")
@@ -776,7 +886,8 @@ def run_daemon(db_path):
 
         @dbus.service.method(DBUS_INTERFACE, in_signature="", out_signature="s")
         def TranslateCurrent(self):
-            return self.start_translation(read_shared_state().get("text", ""))
+            state = read_shared_state()
+            return self.start_translation(state.get("text", ""), state.get("sourceLanguage"))
 
         @dbus.service.method(DBUS_INTERFACE, in_signature="", out_signature="s")
         def TranslateWordCurrent(self):
@@ -790,40 +901,43 @@ def run_daemon(db_path):
                 ).start()
             return json_state(state)
 
-        def start_translation(self, text):
+        def start_translation(self, text, language=None):
             source_text = normalize_text(text)
-            if not looks_like_sentence(source_text):
-                state = {"translated": False, "message": "请选择一个英文句子"}
+            language = resolve_source_language(source_text, language)
+            if not source_text or (language == "english" and not looks_like_sentence(source_text)):
+                state = {"translated": False, "message": "请选择英文句子或梵语转写"}
                 write_shared_state(state)
                 self.publish(state)
                 return json_state(state)
 
-            request_id, state = begin_translation(source_text)
+            request_id, state = begin_translation(source_text, language)
             self.publish(state)
             if request_id:
                 threading.Thread(
                     target=self.translate_worker,
-                    args=(request_id, source_text),
+                    args=(request_id, source_text, language),
                     daemon=True,
                 ).start()
             return json_state(state)
 
-        def translate_worker(self, request_id, source_text):
+        def translate_worker(self, request_id, source_text, language):
             try:
-                translated, engine = translate_sentence(source_text)
+                translated, engine = translate_sentence(source_text, language=language)
                 state = {
                     "translated": True,
                     "translating": False,
                     "text": source_text,
                     "translation": translated,
                     "engine": engine,
+                    "sourceLanguage": language,
                 }
             except Exception as error:
                 state = {
                     "translated": False,
                     "translating": False,
                     "text": source_text,
-                    "message": "整句翻译失败：" + str(error),
+                    "sourceLanguage": language,
+                    "message": "翻译失败：" + str(error),
                 }
 
             if finish_translation(request_id, state):
@@ -831,7 +945,7 @@ def run_daemon(db_path):
 
         def translate_word_worker(self, request_id, word):
             try:
-                translated, engine = translate_sentence(word)
+                translated, engine = translate_sentence(word, language="english")
                 state = finish_word_translation(request_id, translated, engine)
             except Exception as error:
                 state = finish_word_translation(
@@ -916,10 +1030,11 @@ def run_daemon(db_path):
             self.start_watchers()
             current = read_selection(load_config()["clipboard_auto_translate"])
             if current:
-                self.publish(selection_state(current, self.db_path))
+                self.process_selection(current)
             try:
                 self.loop.run()
             finally:
+                self.selection_events.cancel_selection()
                 self.selection_events.cancel_clear()
                 self.stop_watchers()
 
@@ -927,6 +1042,41 @@ def run_daemon(db_path):
         SelectionTranslatorService().run()
     except dbus.exceptions.NameExistsException:
         return
+
+
+def translate_text_sync(source_text, args, language):
+    request_id, translating_state = begin_translation(source_text, language)
+    if not request_id:
+        return translating_state
+    try:
+        translated, engine = translate_sentence(source_text, args, language)
+    except Exception as error:
+        failure = {
+            "translated": False,
+            "translating": False,
+            "text": source_text,
+            "sourceLanguage": language,
+            "message": "翻译失败：" + str(error),
+        }
+        if finish_translation(request_id, failure):
+            return failure
+        return {
+            **failure,
+            "stale": True,
+            "message": "旧文本的翻译已忽略",
+        }
+
+    result = {
+        "translated": True,
+        "translating": False,
+        "text": source_text,
+        "translation": translated,
+        "engine": engine,
+        "sourceLanguage": language,
+    }
+    if finish_translation(request_id, result):
+        return result
+    return {**result, "stale": True}
 
 
 def main(argv):
@@ -943,6 +1093,11 @@ def main(argv):
     parser.add_argument("--stamp", default="")
     parser.add_argument("--translate", action="store_true")
     parser.add_argument("--translate-word-current", action="store_true")
+    parser.add_argument(
+        "--source-language",
+        choices=("auto", "english", "sanskrit", "latin", "chinese"),
+        default="auto",
+    )
     parser.add_argument("--deepseek-api-key", default="")
     parser.add_argument("--deepseek-model", default="")
     parser.add_argument("--deepseek-base-url", default="")
@@ -978,7 +1133,7 @@ def main(argv):
             emit(state)
             return 0
         try:
-            translation, engine = translate_sentence(state["word"], args)
+            translation, engine = translate_sentence(state["word"], args, "english")
             result = finish_word_translation(request_id, translation, engine)
         except Exception as error:
             result = finish_word_translation(request_id, "", "", "在线翻译失败：" + str(error))
@@ -987,56 +1142,16 @@ def main(argv):
 
     source_text = normalize_text(read_selection() if args.selection else args.text)
     if args.translate:
-        if not looks_like_sentence(source_text):
-            emit_state({"translated": False, "message": "请选择一个英文句子"})
+        language = None if args.source_language == "auto" else args.source_language
+        language = resolve_source_language(source_text, language)
+        if not source_text or (language == "english" and not looks_like_sentence(source_text)):
+            emit_state({"translated": False, "message": "请选择英文句子或梵语转写"})
             return 0
-        request_id, translating_state = begin_translation(source_text)
-        if not request_id:
-            emit(translating_state)
-            return 0
-        try:
-            translated, engine = translate_sentence(source_text, args)
-        except Exception as error:
-            failure = {
-                "translated": False,
-                "translating": False,
-                "text": source_text,
-                "message": "整句翻译失败：" + str(error),
-            }
-            if not finish_translation(request_id, failure):
-                emit({
-                    "translated": False,
-                    "translating": False,
-                    "text": source_text,
-                    "stale": True,
-                    "message": "旧句子的翻译已忽略",
-                })
-                return 0
-            emit(failure)
-            return 0
-
-        result = {
-            "translated": True,
-            "translating": False,
-            "text": source_text,
-            "translation": translated,
-            "engine": engine,
-        }
-        if not finish_translation(request_id, result):
-            emit({
-                "translated": True,
-                "translating": False,
-                "text": source_text,
-                "translation": translated,
-                "engine": engine,
-                "stale": True,
-            })
-            return 0
-
-        emit(result)
+        emit(translate_text_sync(source_text, args, language))
         return 0
 
-    emit(selection_state(source_text, args.db))
+    state = selection_state(source_text, args.db)
+    emit(state)
     return 0
 
 

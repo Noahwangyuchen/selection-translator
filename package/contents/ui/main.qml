@@ -46,7 +46,7 @@ PlasmoidItem {
         ? "翻译中..."
         : (sentenceTranslation.length > 0
             ? sentenceTranslation
-            : (sentenceCandidate ? "翻译整句" : (hasResult ? translation.split(/[;\n]/)[0] : currentWord)))
+            : (sentenceCandidate ? "待翻译" : (hasResult ? translation.split(/[;\n]/)[0] : currentWord)))
 
     Plasmoid.icon: "accessories-dictionary"
     Plasmoid.status: hasResult || sentenceCandidate || translatingSentence || sentenceTranslation.length > 0 ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
@@ -370,7 +370,7 @@ PlasmoidItem {
                     }
 
                     QQC2.ToolTip.visible: translateButton.containsMouse
-                    QQC2.ToolTip.text: root.translatingSentence ? "翻译中" : "翻译整句"
+                    QQC2.ToolTip.text: root.translatingSentence ? "翻译中" : "AI 翻译当前选区"
                 }
             }
         }
@@ -535,7 +535,7 @@ PlasmoidItem {
 
                     PlasmaComponents3.Button {
                         visible: root.sentenceCandidate
-                        text: root.translatingSentence ? "翻译中..." : "翻译整句"
+                        text: root.translatingSentence ? "翻译中..." : "AI 翻译当前选区"
                         icon.name: "internet-services"
                         enabled: !root.translatingSentence
                         onClicked: root.translateSentence()

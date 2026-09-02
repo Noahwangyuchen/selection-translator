@@ -29,7 +29,7 @@ TestCase {
     function compactText(state) {
         if (state.translatingSentence) return "翻译中..."
         if (state.sentenceTranslation) return state.sentenceTranslation
-        if (state.sentenceCandidate) return "翻译整句"
+        if (state.sentenceCandidate) return "待翻译"
         if (state.hasResult) return state.translation.split(/[;\n]/)[0]
         return state.currentWord
     }
