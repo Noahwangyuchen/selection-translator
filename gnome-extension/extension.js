@@ -218,7 +218,7 @@ class TranslatorIndicator extends PanelMenu.Button {
         this._translateSentence.visible = sentenceCandidate || busy;
         this._translateSentence.setSensitive(sentenceCandidate && !busy);
         this._translateSentence.label.text = busy ? '翻译中...' : 'AI 翻译当前选区';
-        this._translateWord.visible = Boolean(state.found);
+        this._translateWord.visible = Boolean(word);
         this._translateWord.setSensitive(!state.wordOnlineTranslating);
         this._translateWord.label.text = state.wordOnlineTranslating ? '在线翻译中...' : '在线翻译这个单词';
 

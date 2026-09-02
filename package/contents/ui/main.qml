@@ -46,7 +46,7 @@ PlasmoidItem {
         ? "翻译中..."
         : (sentenceTranslation.length > 0
             ? sentenceTranslation
-            : (sentenceCandidate ? "翻译整句" : (hasResult ? translation.split(/[;\n]/)[0] : currentWord)))
+            : (sentenceCandidate ? "待翻译" : (hasResult ? translation.split(/[;\n]/)[0] : currentWord)))
 
     Plasmoid.icon: "accessories-dictionary"
     Plasmoid.status: hasResult || sentenceCandidate || translatingSentence || sentenceTranslation.length > 0 ? PlasmaCore.Types.ActiveStatus : PlasmaCore.Types.PassiveStatus
@@ -149,7 +149,7 @@ PlasmoidItem {
     }
 
     function translateWord() {
-        if (!hasResult || wordOnlineTranslating) return
+        if (currentWord.length === 0 || wordOnlineTranslating) return
         if (!serviceWatcher.registered) {
             startListener()
             wordOnlineError = "翻译服务正在启动..."
@@ -370,7 +370,7 @@ PlasmoidItem {
                     }
 
                     QQC2.ToolTip.visible: translateButton.containsMouse
-                    QQC2.ToolTip.text: root.translatingSentence ? "翻译中" : "翻译整句"
+                    QQC2.ToolTip.text: root.translatingSentence ? "翻译中" : "AI 翻译当前选区"
                 }
             }
         }
@@ -442,6 +442,13 @@ PlasmoidItem {
                         opacity: 0.62
                         Layout.fillWidth: true
                     }
+
+                }
+
+                ColumnLayout {
+                    visible: root.currentWord.length > 0
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
 
                     PlasmaComponents3.Button {
                         text: root.wordOnlineTranslating
@@ -528,7 +535,7 @@ PlasmoidItem {
 
                     PlasmaComponents3.Button {
                         visible: root.sentenceCandidate
-                        text: root.translatingSentence ? "翻译中..." : "翻译整句"
+                        text: root.translatingSentence ? "翻译中..." : "AI 翻译当前选区"
                         icon.name: "internet-services"
                         enabled: !root.translatingSentence
                         onClicked: root.translateSentence()
@@ -538,11 +545,26 @@ PlasmoidItem {
         }
 
         footer: PlasmaExtras.PlasmoidHeading {
+            visible: !(Plasmoid.containmentDisplayHints & PlasmaCore.Types.ContainmentDrawsPlasmoidHeading)
+
             contentItem: RowLayout {
+                spacing: 0
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
                 PlasmaComponents3.ToolButton {
                     text: "刷新"
                     icon.name: "view-refresh"
+                    display: QQC2.AbstractButton.IconOnly
+                    Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                    Layout.preferredWidth: Kirigami.Units.gridUnit * 2
+                    Layout.preferredHeight: Kirigami.Units.gridUnit * 2
                     onClicked: root.refresh()
+
+                    QQC2.ToolTip.visible: hovered
+                    QQC2.ToolTip.text: text
                 }
             }
         }

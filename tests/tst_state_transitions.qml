@@ -29,7 +29,7 @@ TestCase {
     function compactText(state) {
         if (state.translatingSentence) return "翻译中..."
         if (state.sentenceTranslation) return state.sentenceTranslation
-        if (state.sentenceCandidate) return "翻译整句"
+        if (state.sentenceCandidate) return "待翻译"
         if (state.hasResult) return state.translation.split(/[;\n]/)[0]
         return state.currentWord
     }
@@ -159,5 +159,34 @@ TestCase {
         })
         compare(state.wordOnlineTranslation, "")
         compare(state.wordOnlineEngine, "")
+    }
+
+    function test_missingWordOnlineTranslation() {
+        let state = apply(initialState(), {
+            found: false,
+            word: "codexium",
+            message: "本地词库没有这个词"
+        })
+        compare(state.currentWord, "codexium")
+        verify(!state.hasResult)
+
+        state = apply(state, {
+            found: false,
+            word: "codexium",
+            message: "本地词库没有这个词",
+            wordOnlineTranslating: true
+        })
+        verify(state.wordOnlineTranslating)
+
+        state = apply(state, {
+            found: false,
+            word: "codexium",
+            message: "本地词库没有这个词",
+            wordOnlineTranslation: "代码元素",
+            wordOnlineEngine: "test"
+        })
+        compare(state.wordOnlineTranslation, "代码元素")
+        compare(state.wordOnlineEngine, "test")
+        verify(!state.wordOnlineTranslating)
     }
 }
